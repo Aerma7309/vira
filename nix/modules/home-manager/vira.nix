@@ -36,7 +36,7 @@ in
         RestartSec = "5s";
 
         # Security settings for user service
-        NoNewPrivileges = true;
+
         PrivateTmp = true;
 
         # Environment
