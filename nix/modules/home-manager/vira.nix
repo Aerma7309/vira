@@ -4,6 +4,17 @@ with lib;
 
 let
   cfg = config.services.vira;
+
+  # Minimal SSH config that prevents loading systemd configs
+  sshConfig = pkgs.writeText "vira-ssh-config" ''
+    # Prevent automatic inclusion of system configs
+    Include ${config.home.homeDirectory}/.ssh/config
+  '';
+
+  # SSH wrapper using minimal config
+  sshWrapper = pkgs.writeShellScript "vira-ssh-wrapper" ''
+    exec ${pkgs.openssh}/bin/ssh -F ${sshConfig} "$@"
+  '';
 in
 {
   options.services.vira = mkOption {
@@ -42,7 +53,7 @@ in
         # Environment
         Environment = [
           "PATH=${makeBinPath cfg.extraPackages}:$PATH"
-          "GIT_SSH_COMMAND=${cfg.outputs.sshWrapper}"
+          "GIT_SSH_COMMAND=${sshWrapper}"
         ];
       };
 

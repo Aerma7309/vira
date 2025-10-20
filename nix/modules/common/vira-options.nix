@@ -9,11 +9,6 @@ let
   initialStateJson = pkgs.writeText "vira-initial-state.json" (builtins.toJSON cfg.initialState);
 
   hasInitialState = cfg.initialState.repositories != { };
-
-  # SSH wrapper that ignores systemd config to avoid permission errors
-  sshWrapper = pkgs.writeShellScript "vira-ssh-wrapper" ''
-    exec ${pkgs.openssh}/bin/ssh -F "$HOME/.ssh/config" "$@"
-  '';
 in
 {
   options = {
@@ -104,13 +99,6 @@ in
                 ++ optionals hasInitialState [ "--import" initialStateJson ];
               in
               "${cfg.package}/bin/vira ${concatStringsSep " " globalArgs} web ${concatStringsSep " " webArgs}";
-          };
-
-          sshWrapper = mkOption {
-            type = types.str;
-            readOnly = true;
-            description = "SSH wrapper script path";
-            default = "${sshWrapper}";
           };
         };
       };
