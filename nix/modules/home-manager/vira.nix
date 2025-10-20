@@ -42,7 +42,7 @@ in
         # Environment
         Environment = [
           "PATH=${makeBinPath cfg.extraPackages}:$PATH"
-          "SYSTEMD_SSH_CONFIG=0"
+          "GIT_SSH_COMMAND=${cfg.outputs.sshWrapper}"
         ];
       };
 
