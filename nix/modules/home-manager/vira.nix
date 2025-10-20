@@ -5,15 +5,23 @@ with lib;
 let
   cfg = config.services.vira;
 
-  # Minimal SSH config that prevents loading systemd configs
-  sshConfig = pkgs.writeText "vira-ssh-config" ''
-    # Prevent automatic inclusion of system configs
-    Include ${config.home.homeDirectory}/.ssh/config
-  '';
-
-  # SSH wrapper using minimal config
+  # SSH wrapper that bypasses systemd config to avoid permission errors
+  # SSH reads system configs from /etc/ssh/ssh_config.d/ and systemd dirs by default
+  # We copy the user config content (not symlink) to avoid nix store permission issues
   sshWrapper = pkgs.writeShellScript "vira-ssh-wrapper" ''
-    exec ${pkgs.openssh}/bin/ssh -F ${sshConfig} "$@"
+    # Create SSH config in runtime dir
+    VIRA_SSH_CONFIG="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vira-ssh-config"
+    USER_SSH_CONFIG="${config.home.homeDirectory}/.ssh/config"
+
+    # Copy user config if it exists (using -L to follow symlinks)
+    if [ -f "$USER_SSH_CONFIG" ]; then
+      cat "$USER_SSH_CONFIG" > "$VIRA_SSH_CONFIG"
+    else
+      : > "$VIRA_SSH_CONFIG"  # Empty config
+    fi
+
+    chmod 600 "$VIRA_SSH_CONFIG"
+    exec ${pkgs.openssh}/bin/ssh -F "$VIRA_SSH_CONFIG" "$@"
   '';
 in
 {
