@@ -132,6 +132,71 @@ Enables commit status reporting to GitHub or Bitbucket. When enabled, Vira posts
 - For GitHub, uses GitHub API with token from `gh` CLI.
 - For Bitbucket, uses Bitbucket API with token from `bb` CLI.
 
+#### PostBuild Stage
+
+After a successful pipeline run (Build → Cache → Signoff), Vira can fire one or more outbound HTTPS webhooks. Only HTTPS is permitted.
+
+```haskell
+-- vira.hs
+pipeline
+  { postBuild.webhooks =
+      [ webhook POST "https://hooks.slack.com/services/$SLACK_WEBHOOK_TOKEN"
+          [("Content-Type", "application/json")]
+          (Just "{\"text\": \"✅ $VIRA_BRANCH @ $VIRA_COMMIT_ID built\"}")
+      ]
+  }
+```
+
+> [!IMPORTANT]
+> The above `vira.hs` snippet alone is not enough. The CI machine operator must also allowlist the target domain and any referenced secrets — see [Operator setup](#operator-setup-required) below.
+
+**Variable substitution** is performed on `url`, header values, and `body` before the request is sent:
+
+| Variable           | Description                                        | Always available?                              |
+| ------------------ | -------------------------------------------------- | ---------------------------------------------- |
+| `$VIRA_BRANCH`     | Current branch name                                | ✅ Yes                                         |
+| `$VIRA_COMMIT_ID`  | Commit SHA being built                             | ✅ Yes                                         |
+| `$VIRA_CLONE_URL`  | Repository clone URL (empty if unavailable)        | ✅ Yes                                         |
+| `$VIRA_REPO_DIR`   | Absolute path to the cloned repo on the CI machine | ✅ Yes                                         |
+| `$VIRA_ONLY_BUILD` | `"true"` when running in build-only mode           | ✅ Yes                                         |
+| `$FOO`             | Any CI machine env var named `FOO`                 | Only if `FOO` is in `VIRA_WEBHOOK_ALLOWED_ENV` |
+
+> [!NOTE]
+> Variable substitution gates access to secrets (`VIRA_WEBHOOK_ALLOWED_ENV`), but the webhook URL's **hostname** is governed by a separate allowlist (`VIRA_WEBHOOK_ALLOWED_DOMAINS`). Both must be configured by the operator — see [Operator setup](#operator-setup-required) below.
+
+**Secrets stay on the CI machine.** A variable reference like `$SLACK_WEBHOOK_TOKEN` in `vira.hs` is safe to commit — the actual token value is never logged or visible to the repository. It is only injected into the outbound HTTP request at build time.
+
+#### Operator setup (required)
+
+Webhooks are **disabled by default**. Two environment variables must be configured on the CI machine before any webhook will fire:
+
+**`VIRA_WEBHOOK_ALLOWED_DOMAINS`** — comma-separated list of hostnames that `vira.hs` configs are permitted to target. If this variable is absent, all webhooks fail immediately with an error. Entries are matched exactly against the URL host — no wildcard expansion is performed. Only HTTPS targets are allowed.
+
+```sh
+VIRA_WEBHOOK_ALLOWED_DOMAINS=hooks.slack.com,api.example.com
+```
+
+**`VIRA_WEBHOOK_ALLOWED_ENV`** — comma-separated list of environment variable names that webhook templates may reference via `$VAR` substitution. Variables not in this list are silently replaced with an empty string, so secrets that are not explicitly opted in are never sent to webhook targets.
+
+```sh
+VIRA_WEBHOOK_ALLOWED_ENV=SLACK_WEBHOOK_TOKEN,GITHUB_TOKEN,DEPLOY_API_KEY
+```
+
+When using the Nix home-manager module, set these via the module options instead:
+
+```nix
+services.vira = {
+  webhookAllowedDomains = [ "hooks.slack.com" "api.example.com" ];
+  webhookAllowedEnv     = [ "SLACK_WEBHOOK_TOKEN" "DEPLOY_API_KEY" ];
+};
+```
+
+> [!NOTE]
+> Webhooks are fired in the order they are declared. A failed webhook (non-2xx response or timeout) stops the pipeline with an error.
+
+> [!NOTE]
+> The `GET` method ignores the `body` field. Use `POST`, `PUT`, or `PATCH` to send a request body.
+
 ## Conditional Configuration {#cond}
 
 You can customize the pipeline based on branch or repository information:

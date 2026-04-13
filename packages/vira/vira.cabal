@@ -27,6 +27,7 @@ data-files:
     vira-logo-penguin.svg
     test/sample-configs/simple-example.hs
     test/sample-configs/nix-options-example.hs
+    test/sample-configs/webhook-example.hs
 data-dir:       static
 
 library
@@ -214,6 +215,7 @@ library
     , profunctors
     , record-hasfield
     , relude >=1.0
+    , req
     , safecopy
     , servant
     , servant-event-stream
@@ -342,6 +344,7 @@ executable vira
     , profunctors
     , record-hasfield
     , relude >=1.0
+    , req
     , safecopy
     , servant
     , servant-event-stream
@@ -374,6 +377,8 @@ executable vira-tests
   main-is: Spec.hs
   other-modules:
       Vira.CI.ConfigurationSpec
+      Vira.CI.Pipeline.CheckDomainSpec
+      Vira.CI.Pipeline.SubstituteVarsSpec
       Vira.CI.WorkerSpec
       Vira.Lib.TimeExtraSpec
       Vira.State.ResetSpec
@@ -475,6 +480,7 @@ executable vira-tests
     , profunctors
     , record-hasfield
     , relude >=1.0
+    , req
     , safecopy
     , servant
     , servant-event-stream
