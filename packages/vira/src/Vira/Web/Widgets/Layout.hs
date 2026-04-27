@@ -33,6 +33,7 @@ module Vira.Web.Widgets.Layout (
   appLogoUrl,
   viraPageHeader_,
   viraPageHeaderWithIcon_,
+  viraBrandPanel_,
   viraSection_,
   viraDivider_,
 ) where
@@ -90,28 +91,17 @@ layout crumbs content = do
         let baseTitle = linkTitle <$> viaNonEmpty last crumbs
         toHtml $ pageTitle instanceInfo baseTitle
       base_ [href_ basePath]
-      -- Google Fonts - Inter (variable) for UI, JetBrains Mono for code/logs
-      -- Preconnect hints for faster font loading
+      -- Google Fonts - Geist for UI, Geist Mono for code/logs
       link_ [rel_ "preconnect", href_ "https://fonts.googleapis.com"]
       link_ [rel_ "preconnect", href_ "https://fonts.gstatic.com", crossorigin_ ""]
-      -- Preload the font stylesheets
-      link_ [rel_ "preload", href_ interFontUrl, makeAttributes "as" "style"]
+      link_ [rel_ "preload", href_ sansFontUrl, makeAttributes "as" "style"]
       link_ [rel_ "preload", href_ monoFontUrl, makeAttributes "as" "style"]
-      -- Load fonts: Inter variable (300-700) + JetBrains Mono (400,500,700)
-      link_ [href_ interFontUrl, rel_ "stylesheet"]
+      link_ [href_ sansFontUrl, rel_ "stylesheet"]
       link_ [href_ monoFontUrl, rel_ "stylesheet"]
       link_ [rel_ "icon", type_ "image/svg+xml", href_ logoUrl]
       htmx
       link_ [rel_ "stylesheet", type_ "text/css", href_ "tailwind.css"]
-      -- Custom styles for the new design
-      style_ $
-        unlines
-          [ "html { overflow-y: scroll; }" -- Scrollbar always visible, to prevent jankiness
-          , "body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }"
-          , ":root { --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }"
-          , ".transition-smooth { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }"
-          ]
-    body_ [class_ "bg-gray-50 dark:bg-gray-900 min-h-screen font-inter"] $ do
+    body_ [class_ "bg-gray-50 dark:bg-gray-900 min-h-screen font-sans"] $ do
       -- Add SSE listener for auto-refresh (if page supports it)
       Stream.viewStreamScoped crumbs
       -- Global modal container for all pages
@@ -123,9 +113,9 @@ layout crumbs content = do
           content
         footer crumbs
   where
-    -- Font URLs
-    interFontUrl = "https://fonts.googleapis.com/css2?family=Inter:wght@300..700&display=swap"
-    monoFontUrl = "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"
+    -- Font URLs (Geist variable + Geist Mono variable)
+    sansFontUrl = "https://fonts.googleapis.com/css2?family=Geist:wght@300..700&display=swap"
+    monoFontUrl = "https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;700&display=swap"
     -- Mobile friendly head tags
     mobileFriendly = do
       meta_ [charset_ "utf-8", name_ "viewport", content_ "width=device-width, initial-scale=1"]
@@ -216,7 +206,7 @@ breadcrumbs :: [LinkTo] -> AppHtml ()
 breadcrumbs rs' = do
   logoUrl <- appLogoUrl
   let logo = img_ [src_ logoUrl, alt_ "Vira Logo", class_ "h-8 w-8 rounded-lg"]
-  nav_ [id_ "breadcrumbs", class_ "flex items-center justify-between px-4 py-2 bg-indigo-600 rounded-t-xl"] $ do
+  nav_ [id_ "breadcrumbs", class_ "flex items-center justify-between px-4 py-2 bg-brand-600 rounded-t-xl"] $ do
     ol_ [class_ "flex flex-1 items-center space-x-2 text-base list-none"] $ do
       -- Logo as first element
       li_ [class_ "flex items-center"] $ do
@@ -259,28 +249,34 @@ breadcrumbs rs' = do
       span_ [class_ "mx-1 text-white/60"] $ toHtmlRaw ("<svg xmlns='http://www.w3.org/2000/svg' class='h-5 w-5' fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2'><path stroke-linecap='round' stroke-linejoin='round' d='M9 5l7 7-7 7'/></svg>" :: Text)
 
 {- |
+Brand-tinted panel chrome — the rounded-bottom card that visually
+connects to the breadcrumbs bar. Spacing (padding, margin) is the
+caller's responsibility; pass via @attrs@.
+-}
+viraBrandPanel_ :: forall {result}. (Term [Attributes] result) => [Attributes] -> result
+viraBrandPanel_ attrs =
+  div_ ([class_ "bg-brand-50 dark:bg-brand-900/20 border-2 border-t-0 border-brand-200 dark:border-brand-800 rounded-b-xl"] <> attrs)
+
+{- |
 Standardized page header with title and subtitle.
 
-Features indigo styling that connects visually with breadcrumbs.
+Features brand-accent styling that connects visually with breadcrumbs.
 -}
 viraPageHeader_ :: (Monad m) => Text -> HtmlT m () -> HtmlT m ()
-viraPageHeader_ title subtitle = do
-  div_ [class_ "bg-indigo-50 dark:bg-indigo-900/20 border-2 border-t-0 border-indigo-200 dark:border-indigo-800 rounded-b-xl p-4 mb-6"] $ do
-    h1_ [class_ "text-2xl font-bold text-indigo-900 dark:text-indigo-200 tracking-tight mb-2"] $ toHtml title
-    div_ [class_ "text-indigo-700 dark:text-indigo-300"] subtitle
+viraPageHeader_ = viraPageHeaderWithIcon_ mempty
 
 {- |
 Standardized page header with icon, title and subtitle.
 
-Features indigo styling that connects visually with breadcrumbs, with an icon displayed alongside the title.
+Features brand-accent styling that connects visually with breadcrumbs, with an icon displayed alongside the title.
 -}
 viraPageHeaderWithIcon_ :: (Monad m) => HtmlT m () -> Text -> HtmlT m () -> HtmlT m ()
-viraPageHeaderWithIcon_ icon title subtitle = do
-  div_ [class_ "bg-indigo-50 dark:bg-indigo-900/20 border-2 border-t-0 border-indigo-200 dark:border-indigo-800 rounded-b-xl p-4 mb-6"] $ do
-    h1_ [class_ "text-2xl font-bold text-indigo-900 dark:text-indigo-200 tracking-tight mb-2 flex items-center"] $ do
-      div_ [class_ "w-6 h-6 mr-3 flex items-center justify-center text-indigo-900 dark:text-indigo-200"] icon
+viraPageHeaderWithIcon_ icon title subtitle =
+  viraBrandPanel_ [class_ "p-4 mb-6"] $ do
+    h1_ [class_ "text-2xl font-bold text-brand-900 dark:text-brand-200 tracking-tight mb-2 flex items-center"] $ do
+      div_ [class_ "w-6 h-6 mr-3 flex items-center justify-center text-brand-900 dark:text-brand-200"] icon
       toHtml title
-    div_ [class_ "text-indigo-700 dark:text-indigo-300"] subtitle
+    div_ [class_ "text-brand-700 dark:text-brand-300"] subtitle
 
 {- |
 Section component for grouping and spacing page content.

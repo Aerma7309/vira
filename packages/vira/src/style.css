@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Always render a vertical scrollbar to prevent layout shift between
+   pages whose content does/doesn't overflow the viewport. */
+html {
+  overflow-y: scroll;
+}
+
+/* Smooth transition for interactive elements that change colors / spacing
+   on hover or focus. Referenced by class via `transition-smooth`. */
+.transition-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@theme {
+  --font-sans:
+    "Geist", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono:
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+
+  /* Brand accent — single source of truth for primary/highlight color.
+     Aliased to Tailwind's blue scale today; change these var() targets
+     to shift the brand without touching widget code. */
+  --color-brand-50: var(--color-blue-50);
+  --color-brand-100: var(--color-blue-100);
+  --color-brand-200: var(--color-blue-200);
+  --color-brand-300: var(--color-blue-300);
+  --color-brand-400: var(--color-blue-400);
+  --color-brand-500: var(--color-blue-500);
+  --color-brand-600: var(--color-blue-600);
+  --color-brand-700: var(--color-blue-700);
+  --color-brand-800: var(--color-blue-800);
+  --color-brand-900: var(--color-blue-900);
+}
