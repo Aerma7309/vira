@@ -215,7 +215,6 @@ library
     , profunctors
     , record-hasfield
     , relude >=1.0
-    , req
     , safecopy
     , servant
     , servant-event-stream
@@ -344,7 +343,6 @@ executable vira
     , profunctors
     , record-hasfield
     , relude >=1.0
-    , req
     , safecopy
     , servant
     , servant-event-stream
@@ -479,7 +477,6 @@ executable vira-tests
     , profunctors
     , record-hasfield
     , relude >=1.0
-    , req
     , safecopy
     , servant
     , servant-event-stream
