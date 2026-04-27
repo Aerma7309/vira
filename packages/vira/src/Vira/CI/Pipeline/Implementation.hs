@@ -40,6 +40,7 @@ import Effectful.Process (Process)
 import Effectful.Reader.Static qualified as ER
 import Prettyprinter
 import Prettyprinter.Render.Text (renderStrict)
+import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Nix.Core (nix)
@@ -378,7 +379,10 @@ runHook hooksConfig (HookName name) envVars workDir =
   case Map.lookup name hooksConfig of
     Nothing -> pure $ Left $ "Hook '" <> name <> "' not found in operator configuration"
     Just cmd -> do
-      let processEnv = map (bimap toString toString) envVars
+      -- Inherit the current environment and merge hook vars into it,
+      -- so that PATH (and other env) is available to the hook command.
+      currentEnv <- getEnvironment
+      let processEnv = map (bimap toString toString) envVars <> currentEnv
       let cp =
             (proc "sh" ["-c", toString cmd])
               { env = Just processEnv
