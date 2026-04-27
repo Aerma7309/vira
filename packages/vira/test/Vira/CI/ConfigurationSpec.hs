@@ -5,17 +5,35 @@ module Vira.CI.ConfigurationSpec (spec) where
 
 import Data.Time (UTCTime (UTCTime), fromGregorian, secondsToDiffTime)
 import Effectful.Git (BranchName (..), Commit (..), CommitID (..), RepoName (..))
-import Language.Haskell.Hint.Nix (ghcPackagePath)
-import Language.Haskell.Interpreter.Unsafe (unsafeRunInterpreterWithArgs)
+import Language.Haskell.Hint.Nix (ghcLibDir)
+import Language.Haskell.Interpreter.Unsafe (unsafeRunInterpreterWithArgsLibdir)
 import Paths_vira (getDataFileName)
-import System.Directory (listDirectory)
+import System.Environment (getExecutablePath)
+import System.FilePath (joinPath, splitDirectories)
 import Test.Hspec
 import Vira.CI.Configuration
 import Vira.CI.Context (CIMode (..), ViraContext (..))
 import Vira.CI.Pipeline.Implementation (defaultPipeline)
-import Vira.CI.Pipeline.Type (BuildStage (..), Flake (..), HttpMethod (..), NixConfig (..), PostBuildStage (..), SignoffStage (..), ViraPipeline (..), WebhookConfig (..), validateNixOptions)
+import Vira.CI.Pipeline.Type (BuildStage (..), Flake (..), Hooks (..), NixConfig (..), SignoffStage (..), ViraPipeline (..), validateNixOptions)
 import Vira.State.Type (Branch (..))
 import Prelude hiding (id)
+
+{- | Locate the cabal in-place package DB by walking up from the test binary.
+The binary is at dist-newstyle/build/.../vira-tests and the package DB
+is at dist-newstyle/packagedb/ghc-<version>.
+-}
+getCabalInplacePkgDb :: IO FilePath
+getCabalInplacePkgDb = do
+  exePath <- getExecutablePath
+  let dirs = splitDirectories exePath
+      -- The path contains "ghc-<version>" as a directory name under dist-newstyle
+      beforeDistNewstyle = takeWhile (/= "dist-newstyle") dirs
+      -- Find the GHC version directory (matches "ghc-*")
+      afterDistNewstyle = drop 1 (dropWhile (/= "dist-newstyle") dirs)
+      ghcDir = case filter ("ghc-" `isPrefixOf`) afterDistNewstyle of
+        (d : _) -> d
+        [] -> error $ toText $ "Cannot find GHC version dir in path: " ++ exePath
+  pure $ joinPath (beforeDistNewstyle ++ ["dist-newstyle", "packagedb", ghcDir])
 
 -- Test data
 testBranchStaging :: Branch
@@ -75,36 +93,18 @@ spec = describe "Vira.CI.Configuration" $ do
                        )
         Left err -> expectationFailure $ "Config application failed: " <> show err
 
-    it "applies webhook config correctly" $ do
-      -- The Nix package DB baked into the binary may not have WebhookConfig yet
-      -- (it predates this branch). Run the interpreter with both the Nix DB
-      -- (for external deps like Relude) and the cabal in-place DB (for our
-      -- locally-modified vira-ci-types) so all modules are visible.
-      configPath <- getDataFileName "test/sample-configs/webhook-example.hs"
+    it "applies hooks configuration correctly" $ do
+      -- The Nix package DB may not include the latest vira-ci-types with Hooks,
+      -- so we use applyConfigWithRunner with the cabal in-place package DB.
+      -- We locate it relative to the test binary's autogen directory.
+      configPath <- getDataFileName "test/sample-configs/hooks-example.hs"
       configCode <- decodeUtf8 <$> readFileBS configPath
-      ghcDirs <- listDirectory "dist-newstyle/packagedb"
-      let inPlaceDb = case filter ("ghc-" `isPrefixOf`) ghcDirs of
-            (d : _) -> "dist-newstyle/packagedb/" <> d
-            [] -> "dist-newstyle/packagedb"
-          runner =
-            unsafeRunInterpreterWithArgs
-              [ "-package-db"
-              , ghcPackagePath -- Nix DB: Relude, GHC.Records.Compat, etc.
-              , "-package-db"
-              , inPlaceDb -- in-place DB: local vira-ci-types with WebhookConfig
-              ]
+      cabalPkgDb <- getCabalInplacePkgDb
+      let runner = unsafeRunInterpreterWithArgsLibdir ["-package-db", cabalPkgDb] ghcLibDir
       result <- applyConfigWithRunner runner configCode testContextStaging defaultPipeline
       case result of
         Right pipeline -> do
-          let hooks = pipeline.postBuild.webhooks
-          length hooks `shouldBe` 1
-          case hooks of
-            [hook] -> do
-              hook.webhookUrl `shouldBe` "https://example.com/notify?branch=$VIRA_BRANCH&commit=$VIRA_COMMIT_ID"
-              hook.method `shouldBe` GET
-              hook.headers `shouldBe` []
-              hook.body `shouldBe` Nothing
-            _ -> expectationFailure $ "Expected exactly 1 webhook, got " <> show (length hooks)
+          pipeline.hooks.onSuccess `shouldBe` Just "notify-jenkins"
         Left err -> expectationFailure $ "Config application failed: " <> show err
 
   describe "validateNixOptions" $ do

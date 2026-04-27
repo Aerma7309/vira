@@ -3,6 +3,7 @@
 -- | Core types for the Vira application
 module Vira.App.Type (
   ViraRuntimeState (..),
+  HooksConfig,
 ) where
 
 import Data.Acid (AcidState)
@@ -18,6 +19,9 @@ import Vira.Refresh.Type (RefreshState)
 import Vira.State.Core (ViraState)
 import Vira.Supervisor.Type (TaskSupervisor)
 import Vira.Web.LinkTo.Type (LinkTo)
+
+-- | Map of hook names to their shell commands
+type HooksConfig = Map Text Text
 
 -- | Application-wide state available in 'Effectful.Eff' stack
 data ViraRuntimeState = ViraRuntimeState
@@ -46,4 +50,6 @@ data ViraRuntimeState = ViraRuntimeState
   -- ^ Server start time for uptime tracking
   , cachePublicKey :: PublicKey
   -- ^ Cache 'PublicKey' (for UI display)
+  , hooks :: HooksConfig
+  -- ^ Named operator hooks (name -> shell command) for post-build actions
   }

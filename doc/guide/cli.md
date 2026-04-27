@@ -67,6 +67,7 @@ When `--only-build` is used:
 - Ignores `build.systems` from config (uses current system only)
 - Skips cache push even if configured
 - Skips signoff creation even if configured
+- Skips hooks even if configured
 
 ### Examples
 

@@ -61,6 +61,8 @@ data WebSettings = WebSettings
   -- ^ Optional JSON file to import on startup
   , ciSettings :: CISettings
   -- ^ CI configuration settings
+  , hooksJson :: Maybe Text
+  -- ^ Optional JSON string mapping hook names to shell commands
   }
   deriving stock (Show)
 
@@ -175,6 +177,13 @@ webSettingsParser = do
           <> value 14
           <> showDefault
       )
+  hooksJson <-
+    optional $
+      strOption
+        ( long "hooks"
+            <> metavar "JSON"
+            <> help "JSON string mapping hook names to shell commands, e.g. '{\"notify\":\"curl ...\"}'"
+        )
   pure
     WebSettings
       { port
@@ -188,6 +197,7 @@ webSettingsParser = do
             , autoBuildNewBranches = AutoBuildNewBranches autoBuildNewBranchesBool
             , jobRetentionDays
             }
+      , hooksJson
       }
 
 -- | Parser for CI command

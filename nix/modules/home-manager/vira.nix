@@ -36,13 +36,7 @@ in
             optionalAttrs (cfg.extraPackages != [ ])
               {
                 PATH = "${makeBinPath cfg.extraPackages}:$PATH";
-              }
-            // optionalAttrs (cfg.webhookAllowedDomains != [ ]) {
-              VIRA_WEBHOOK_ALLOWED_DOMAINS = concatStringsSep "," cfg.webhookAllowedDomains;
-            }
-            // optionalAttrs (cfg.webhookAllowedEnv != [ ]) {
-              VIRA_WEBHOOK_ALLOWED_ENV = concatStringsSep "," cfg.webhookAllowedEnv;
-            };
+              };
           # User environment overrides defaults
           mergedEnv = defaultEnv // cfg.systemd.environment;
           envList = mapAttrsToList (name: value: "${name}=${value}") mergedEnv;
@@ -88,13 +82,7 @@ in
           optionalAttrs (cfg.extraPackages != [ ])
             {
               PATH = makeBinPath cfg.extraPackages;
-            }
-          // optionalAttrs (cfg.webhookAllowedDomains != [ ]) {
-            VIRA_WEBHOOK_ALLOWED_DOMAINS = concatStringsSep "," cfg.webhookAllowedDomains;
-          }
-          // optionalAttrs (cfg.webhookAllowedEnv != [ ]) {
-            VIRA_WEBHOOK_ALLOWED_ENV = concatStringsSep "," cfg.webhookAllowedEnv;
-          };
+            };
       };
     };
 

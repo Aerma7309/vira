@@ -11,8 +11,9 @@ import Control.Exception (bracket, throwTo)
 
 import Data.Acid (AcidState)
 import Data.Acid.Events qualified as Event
-import Data.Aeson (encode)
+import Data.Aeson (decode, encode)
 import Data.ByteString.Lazy qualified as LBS
+import Data.Map.Strict qualified as Map
 import Data.Time (getCurrentTime)
 import Data.Version (showVersion)
 import Effectful (runEff)
@@ -86,6 +87,15 @@ runVira = do
         -- Import data if specified
         whenJust (importFile webSettings) $ \filePath -> do
           importFromFileOrStdin acid (Just filePath)
+
+        -- Parse hooks JSON if provided
+        hooks <- case hooksJson webSettings of
+          Nothing -> pure Map.empty
+          Just jsonText -> case decode $ encodeUtf8 jsonText of
+            Nothing -> do
+              putTextLn "Error: Invalid --hooks JSON"
+              exitFailure
+            Just h -> pure h
 
         startTime <- getCurrentTime
         instanceInfo <- getInstanceInfo

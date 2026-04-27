@@ -92,43 +92,27 @@ in
       };
     };
 
-    webhookAllowedDomains = mkOption {
-      type = types.listOf types.str;
-      default = [ ];
+    hooks = mkOption {
+      type = types.attrsOf types.str;
+      default = { };
       description = ''
-        List of hostnames that repository <filename>vira.hs</filename> configs are
-        permitted to use as post-build webhook targets.
+        Map of hook names to shell commands for post-build hooks.
 
-        An empty list (the default) disables all outbound webhooks.
-        Entries are matched exactly against the URL host — no wildcard
-        expansion is performed.
+        Hooks are registered by name here and referenced in <filename>vira.hs</filename>
+        via <literal>hooks.onSuccess = Just "hook-name"</literal>. When triggered,
+        vira executes the shell command with context in environment variables
+        (<literal>VIRA_REPO</literal>, <literal>VIRA_BRANCH</literal>, <literal>VIRA_COMMIT_ID</literal>).
 
-        Example: <literal>[ "hooks.slack.com" "api.example.com" ]</literal>
-
-        Populates the <envar>VIRA_WEBHOOK_ALLOWED_DOMAINS</envar> environment
-        variable consumed by the Vira service.
+        Example:
+        <programlisting language="nix">
+        services.vira.hooks = {
+          notify-jenkins = '' curl - fsS - -retry 3 - X POST - u "$JENKINS_USER:$JENKINS_TOKEN" "https://jenkins.office/job/$VIRA_REPO-integration/buildWithParameters?BRANCH=$VIRA_BRANCH" '';
+        };
+        </programlisting>
       '';
-      example = [ "hooks.slack.com" "api.example.com" ];
-    };
-
-    webhookAllowedEnv = mkOption {
-      type = types.listOf types.str;
-      default = [ ];
-      description = ''
-        List of environment variable names that repository
-        <filename>vira.hs</filename> webhook templates are permitted to
-        reference via <literal>$VAR</literal> substitution.
-
-        Variables not in this list are silently replaced with an empty
-        string, so secrets that are not explicitly opt-in are never sent
-        to webhook targets.
-
-        Example: <literal>[ "SLACK_WEBHOOK_TOKEN" "DEPLOY_API_KEY" ]</literal>
-
-        Populates the <envar>VIRA_WEBHOOK_ALLOWED_ENV</envar> environment
-        variable consumed by the Vira service.
-      '';
-      example = [ "SLACK_WEBHOOK_TOKEN" "DEPLOY_API_KEY" ];
+      example = literalExpression ''{
+        notify-slack = "echo 'Build succeeded: $VIRA_REPO' | slack-notify";
+      }'';
     };
 
     systemd = mkOption {
@@ -194,7 +178,8 @@ in
                 ++ optionals hasInitialState [ "--import" initialStateJson ]
                 ++ optionals (cfg.maxConcurrentBuilds != null) [ "--max-concurrent-builds" (toString cfg.maxConcurrentBuilds) ]
                 ++ optionals cfg.autoBuildNewBranches [ "--auto-build-new-branches" ]
-                ++ [ "--job-retention-days" (toString cfg.jobRetentionDays) ];
+                ++ [ "--job-retention-days" (toString cfg.jobRetentionDays) ]
+                ++ optionals (cfg.hooks != { }) [ "--hooks" (builtins.toJSON cfg.hooks) ];
               in
               "${cfg.package}/bin/vira ${concatStringsSep " " globalArgs} web ${concatStringsSep " " webArgs}";
           };

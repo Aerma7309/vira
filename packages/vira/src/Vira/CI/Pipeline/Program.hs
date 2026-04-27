@@ -17,12 +17,12 @@ import System.Nix.System (System (..))
 import Vira.CI.Context (ViraContext (..))
 import Vira.CI.Error (PipelineError (..))
 import Vira.CI.Pipeline.Effect
-import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), NixConfig (..), PostBuildStage (..), SignoffStage (..), ViraPipeline (..))
+import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), HookName (..), Hooks (..), NixConfig (..), SignoffStage (..), ViraPipeline (..))
 import Vira.State.Type (Branch, Repo)
 
 -- | Pretty-print pipeline configuration in a concise format
 prettyPipeline :: ViraPipeline -> Text
-prettyPipeline ViraPipeline {build = buildStage, nix = nixCfg, cache = cacheStage, signoff = signoffStage, postBuild = postBuildStage} =
+prettyPipeline ViraPipeline {build = buildStage, nix = nixCfg, cache = cacheStage, signoff = signoffStage, hooks = hooksStage} =
   renderStrict $
     layoutPretty defaultLayoutOptions $
       vsep
@@ -36,7 +36,7 @@ prettyPipeline ViraPipeline {build = buildStage, nix = nixCfg, cache = cacheStag
               ]
         , "Cache:" <+> maybe "disabled" (\url -> "enabled" <+> parens (pretty url)) cacheStage.url
         , "Signoff:" <+> if signoffStage.enable then "enabled" else "disabled"
-        , "PostBuild:" <+> prettyPostBuild postBuildStage
+        , "Hooks:" <+> prettyHooks hooksStage
         ]
   where
     prettyFlake :: Flake -> Doc ann
@@ -53,10 +53,9 @@ prettyPipeline ViraPipeline {build = buildStage, nix = nixCfg, cache = cacheStag
     prettyNixOptions opts =
       "Nix options:" <+> hsep (punctuate comma (map (\(k, v) -> pretty k <> "=" <> pretty v) opts))
 
-    prettyPostBuild :: PostBuildStage -> Doc ann
-    prettyPostBuild (PostBuildStage []) = "disabled (no webhooks configured)"
-    prettyPostBuild (PostBuildStage hooks) =
-      pretty (length hooks) <+> "webhook(s)"
+    prettyHooks :: Hooks -> Doc ann
+    prettyHooks (Hooks Nothing) = "disabled (no hook configured)"
+    prettyHooks (Hooks (Just (HookName name))) = "enabled" <+> parens ("onSuccess:" <+> pretty name)
 
 -- | Pipeline program for CLI (uses existing local directory)
 pipelineProgram ::
@@ -85,7 +84,7 @@ pipelineProgram = do
   -- Step 4: Signoff
   signoff pipeline buildResults
 
-  -- Step 5: Post-build webhooks (run last, after cache and signoff)
+  -- Step 5: Post-build hooks (run last, after cache and signoff)
   postBuild pipeline buildResults
   logPipeline Info "Pipeline completed successfully"
 

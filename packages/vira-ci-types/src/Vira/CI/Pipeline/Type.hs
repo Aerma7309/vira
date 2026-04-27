@@ -16,14 +16,9 @@
 
 module Vira.CI.Pipeline.Type where
 
-import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
-import Data.Map.Strict qualified as Map
 import Data.String (IsString (..))
-import Data.Text qualified as T
-import Data.Text.Lazy qualified as TL
-import Data.Text.Lazy.Builder qualified as TB
 import GHC.Records.Compat
-import Relude (Bool (..), Char, Eq (..), FilePath, Generic, Maybe (..), NonEmpty, Show, Text, maybe, mempty, notElem, ($), (<>), (||))
+import Relude (Bool (..), Eq (..), FilePath, Generic, Maybe (..), NonEmpty, Show, Text, notElem)
 import System.Nix.System (System)
 
 -- | CI Pipeline configuration types
@@ -32,7 +27,7 @@ data ViraPipeline = ViraPipeline
   , nix :: NixConfig
   , cache :: CacheStage
   , signoff :: SignoffStage
-  , postBuild :: PostBuildStage
+  , hooks :: Hooks
   }
   deriving stock (Generic, Show)
 
@@ -98,83 +93,39 @@ newtype CacheStage = CacheStage
   }
   deriving stock (Generic, Show)
 
--- | HTTP method for webhook requests
-data HttpMethod = GET | POST | PUT | PATCH
+-- | Name of a hook registered by the operator
+newtype HookName = HookName Text
   deriving stock (Generic, Show, Eq)
+  deriving newtype (IsString)
 
-{- | A single outbound webhook triggered after a successful build.
+{- | Post-build hooks: named operator-registered commands to run after successful builds.
 
-Variable substitution (@$VAR@) is performed on 'webhookUrl', header values,
-and 'body'.  Two namespaces are available:
+Hooks are registered by name in the Nix configuration. The pipeline
+references them by name in vira.hs. Vira executes the command with context
+in environment variables. No HTTP requests are made by vira itself.
 
-  * @$VIRA_BRANCH@, @$VIRA_COMMIT_ID@, @$VIRA_CLONE_URL@, @$VIRA_REPO_DIR@,
-    @$VIRA_ONLY_BUILD@ — always substituted from the build context.
-  * Any other @$VAR@ — substituted from the CI machine environment if @VAR@
-    appears in @VIRA_WEBHOOK_ALLOWED_ENV@; otherwise replaced with empty string.
+Example Nix configuration:
+  services.vira.hooks = {
+    notify-jenkins = ''
+      curl -fsS --retry 3 -X POST \
+        -u "$JENKINS_USER:$JENKINS_TOKEN" \
+        "https://jenkins.office/job/$VIRA_REPO-integration/buildWithParameters?BRANCH=$VIRA_BRANCH"
+    '';
+  };
+
+Example pipeline usage:
+  pipeline { hooks.onSuccess = Just "notify-jenkins" }
+
+Environment variables passed to hooks (derived from ViraContext):
+  - VIRA_REPO
+  - VIRA_BRANCH
+  - VIRA_COMMIT_ID
 -}
-data WebhookConfig = WebhookConfig
-  { webhookUrl :: Text
-  , method :: HttpMethod
-  , headers :: [(Text, Text)]
-  , body :: Maybe Text
+newtype Hooks = Hooks
+  { onSuccess :: Maybe HookName
+  -- ^ Hook to run after a successful pipeline run
   }
   deriving stock (Generic, Show)
-
-{- | Smart constructor for 'WebhookConfig'.
-
-Named-field syntax does not work inside the @hint@ interpreter ('NoFieldSelectors'),
-so use this instead:
-
-@
-webhook GET "https://example.com/notify" [] Nothing
-@
--}
-webhook :: HttpMethod -> Text -> [(Text, Text)] -> Maybe Text -> WebhookConfig
-webhook m url hdrs bd = WebhookConfig {webhookUrl = url, method = m, headers = hdrs, body = bd}
-
--- | Post-build stage: fire outbound webhooks after a successful pipeline run.
-newtype PostBuildStage = PostBuildStage
-  { webhooks :: [WebhookConfig]
-  }
-  deriving stock (Generic, Show)
-
-{- | Substitute @$VAR@ placeholders in text.
-
-Unknown keys are replaced with empty string. Variable names follow identifier
-rules (@[A-Za-z_][A-Za-z0-9_]*@). A bare @$@ not followed by a valid
-identifier start is kept as-is.
--}
-substituteVars :: [(Text, Text)] -> Text -> Text
-substituteVars bindings tmpl =
-  TL.toStrict $ TB.toLazyText $ go tmpl
-  where
-    lookupMap :: Map.Map Text Text
-    lookupMap = Map.fromList bindings
-
-    go :: Text -> TB.Builder
-    go t =
-      -- T.breakOn "$" returns (before, fromDollarOnwards); rest is either empty
-      -- or starts with '$', so the Just ('$', after) branch is exhaustive.
-      let (lit, rest) = T.breakOn "$" t
-          prefix = TB.fromText lit
-       in case T.uncons rest of
-            Nothing -> prefix
-            Just ('$', after) ->
-              case T.uncons after of
-                Just (c, _)
-                  | isVarStart c ->
-                      let (name, tail_) = T.span isIdentChar after
-                          replacement = maybe mempty TB.fromText (Map.lookup name lookupMap)
-                       in prefix <> replacement <> go tail_
-                -- bare '$' not followed by a valid identifier start — keep it
-                _ -> prefix <> TB.singleton '$' <> go after
-            -- unreachable: rest from breakOn always starts with '$' when non-empty
-            Just _ -> prefix <> go rest
-    isVarStart :: Char -> Bool
-    isVarStart c = isAsciiUpper c || isAsciiLower c || c == '_'
-
-    isIdentChar :: Char -> Bool
-    isIdentChar c = isVarStart c || isDigit c
 
 -- HasField instances for enabling OverloadedRecordUpdate syntax (see vira.hs)
 -- NOTE: Do not forgot to fill in these instances if the types above change.
@@ -201,32 +152,20 @@ instance HasField "enable" SignoffStage Bool where
 instance HasField "url" CacheStage (Maybe Text) where
   hasField (CacheStage url) = (CacheStage, url)
 
-instance HasField "webhookUrl" WebhookConfig Text where
-  hasField wh = (\x -> wh {webhookUrl = x}, wh.webhookUrl)
-
-instance HasField "method" WebhookConfig HttpMethod where
-  hasField wh = (\x -> wh {method = x}, wh.method)
-
-instance HasField "headers" WebhookConfig [(Text, Text)] where
-  hasField wh = (\x -> wh {headers = x}, wh.headers)
-
-instance HasField "body" WebhookConfig (Maybe Text) where
-  hasField wh = (\x -> wh {body = x}, wh.body)
-
-instance HasField "webhooks" PostBuildStage [WebhookConfig] where
-  hasField (PostBuildStage webhooks) = (PostBuildStage, webhooks)
+instance HasField "onSuccess" Hooks (Maybe HookName) where
+  hasField (Hooks onSuccess) = (Hooks, onSuccess)
 
 instance HasField "build" ViraPipeline BuildStage where
-  hasField (ViraPipeline build nix cache signoff postBuild) = (\x -> ViraPipeline x nix cache signoff postBuild, build)
+  hasField (ViraPipeline build nix cache signoff hooks) = (\x -> ViraPipeline x nix cache signoff hooks, build)
 
 instance HasField "nix" ViraPipeline NixConfig where
-  hasField (ViraPipeline build nix cache signoff postBuild) = (\x -> ViraPipeline build x cache signoff postBuild, nix)
+  hasField (ViraPipeline build nix cache signoff hooks) = (\x -> ViraPipeline build x cache signoff hooks, nix)
 
 instance HasField "cache" ViraPipeline CacheStage where
-  hasField (ViraPipeline build nix cache signoff postBuild) = (\x -> ViraPipeline build nix x signoff postBuild, cache)
+  hasField (ViraPipeline build nix cache signoff hooks) = (\x -> ViraPipeline build nix x signoff hooks, cache)
 
 instance HasField "signoff" ViraPipeline SignoffStage where
-  hasField (ViraPipeline build nix cache signoff postBuild) = (\x -> ViraPipeline build nix cache x postBuild, signoff)
+  hasField (ViraPipeline build nix cache signoff hooks) = (\x -> ViraPipeline build nix cache x hooks, signoff)
 
-instance HasField "postBuild" ViraPipeline PostBuildStage where
-  hasField (ViraPipeline build nix cache signoff postBuild) = (ViraPipeline build nix cache signoff, postBuild)
+instance HasField "hooks" ViraPipeline Hooks where
+  hasField (ViraPipeline build nix cache signoff hooks) = (ViraPipeline build nix cache signoff, hooks)

@@ -2,11 +2,15 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Vira.CI.Pipeline.Effect where
+module Vira.CI.Pipeline.Effect (
+  module Vira.CI.Pipeline.Effect,
+  HooksConfig,
+) where
 
 import Prelude hiding (asks)
 
 import Colog (Severity)
+import Data.Map.Strict qualified as Map
 import DevourFlake (DevourFlakeResult)
 import Effectful (Eff, Effect, IOE, type (:>))
 import Effectful.Colog.Simple (LogContext (..))
@@ -14,6 +18,7 @@ import Effectful.Reader.Static qualified as ER
 import Effectful.TH
 import LogSink (Sink (..))
 import System.FilePath ((</>))
+import Vira.App.Type (HooksConfig)
 import Vira.CI.Context (ViraContext (..))
 import Vira.CI.Log (ViraLog (..), decodeViraLog, encodeViraLog, renderViraLogCLI)
 import Vira.CI.Pipeline.Type (ViraPipeline)
@@ -32,6 +37,8 @@ data PipelineEnv = PipelineEnv
   -- ^ 'LogSink.Sink' for all output (ViraLog JSON + subprocess raw output)
   , excludeContextKeys :: [Text]
   -- ^ Context keys to exclude from log entries (repo/branch/job already in file path)
+  , availableHooks :: HooksConfig
+  -- ^ Map of hook names to their shell commands (from operator configuration)
   }
   deriving stock (Generic)
 
@@ -105,21 +112,22 @@ data Pipeline :: Effect where
   Cache :: ViraPipeline -> NonEmpty BuildResult -> Pipeline m ()
   -- | Create GitHub/Bitbucket commit signoff (one per system)
   Signoff :: ViraPipeline -> NonEmpty BuildResult -> Pipeline m ()
-  -- | Fire configured post-build webhooks
+  -- | Execute configured post-build hooks
   PostBuild :: ViraPipeline -> NonEmpty BuildResult -> Pipeline m ()
 
 -- Generate boilerplate for the effect
 makeEffect ''Pipeline
 
 -- | Construct PipelineEnv for web/CI execution (with output log and sink)
-pipelineEnvFromRemote :: Tools -> Sink Text -> [Text] -> ViraContext -> PipelineEnv
-pipelineEnvFromRemote tools sink excludeKeys ctx =
+pipelineEnvFromRemote :: HooksConfig -> Tools -> Sink Text -> [Text] -> ViraContext -> PipelineEnv
+pipelineEnvFromRemote hooks tools sink excludeKeys ctx =
   PipelineEnv
     { outputLog = Just $ ctx.repoDir </> "output.log"
     , tools = tools
     , viraContext = ctx
     , logSink = sink
     , excludeContextKeys = excludeKeys
+    , availableHooks = hooks
     }
 
 -- | Construct PipelineEnv for CLI execution (stdout sink with severity filtering)
@@ -131,6 +139,7 @@ pipelineEnvFromCLI minSeverity excludeKeys tools ctx =
     , viraContext = ctx
     , logSink = filteredStdoutSink minSeverity
     , excludeContextKeys = excludeKeys
+    , availableHooks = Map.empty
     }
   where
     filteredStdoutSink :: Severity -> Sink Text

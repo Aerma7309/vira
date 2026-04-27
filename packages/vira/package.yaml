@@ -25,6 +25,7 @@ data-files:
   - vira-logo-penguin.svg
   - test/sample-configs/simple-example.hs
   - test/sample-configs/nix-options-example.hs
+  - test/sample-configs/hooks-example.hs
   - test/sample-configs/webhook-example.hs
 
 ghc-options:
