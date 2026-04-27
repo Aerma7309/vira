@@ -7,3 +7,4 @@ dependencies:
   apm:
     - srid/agency#master
     - juspay/skills/skills/nix-justfile
+    - anthropics/skills/skills/frontend-design

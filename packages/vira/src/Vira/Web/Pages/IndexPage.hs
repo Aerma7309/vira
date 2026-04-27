@@ -101,14 +101,14 @@ viewRecentActivity mNeverBuilt = do
 heroWelcome :: (Monad m) => Text -> Text -> Text -> Text -> HtmlT m ()
 heroWelcome logoUrl reposLink envLink cacheLink = do
   -- Compact hero banner
-  div_ [class_ "bg-indigo-50 dark:bg-indigo-900/20 border-2 border-t-0 border-indigo-200 dark:border-indigo-800 rounded-b-xl p-6 mb-6"] $ do
+  W.viraBrandPanel_ [class_ "p-6 mb-6"] $ do
     -- Logo and title
     div_ [class_ "flex items-center space-x-4 mb-4"] $ do
       img_ [src_ logoUrl, class_ "w-12 h-12"]
       div_ $ do
-        h1_ [class_ "text-2xl font-bold text-indigo-900 dark:text-indigo-100"] $ do
+        h1_ [class_ "text-2xl font-bold text-brand-900 dark:text-brand-100"] $ do
           a_ [href_ "http://github.com/juspay/vira", class_ "hover:underline", target_ "_blank"] "Vira"
-        p_ [class_ "text-sm text-indigo-700 dark:text-indigo-300"] $ do
+        p_ [class_ "text-sm text-brand-700 dark:text-brand-300"] $ do
           "No-frills CI/CD for "
           a_ [href_ "https://nixos.asia/en/nix-first", class_ "underline hover:no-underline", target_ "blank"] "Nix"
 
@@ -120,6 +120,6 @@ heroWelcome logoUrl reposLink envLink cacheLink = do
   where
     heroButton :: (Monad m) => Text -> ByteString -> Text -> HtmlT m ()
     heroButton url icon label =
-      a_ [href_ url, class_ "flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-indigo-600 dark:bg-indigo-700 text-white font-semibold rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"] $ do
+      a_ [href_ url, class_ "flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-brand-600 dark:bg-brand-700 text-white font-semibold rounded-lg hover:bg-brand-700 dark:hover:bg-brand-600 transition-colors"] $ do
         div_ [class_ "w-4 h-4 flex items-center justify-center"] $ toHtmlRaw icon
         toHtml label

@@ -1,3 +1,8 @@
+---
+name: vira-design
+description: Vira's design system — TailwindCSS conventions, color palette, typography, spacing, components, and accessibility rules. Use when working on UI components, styling, or layout in this project (Lucid HTML in Haskell sources under packages/vira).
+---
+
 # Vira Design System
 
 Clean, minimal CI/CD application design system emphasizing clarity and functionality.
@@ -12,7 +17,7 @@ Clean, minimal CI/CD application design system emphasizing clarity and functiona
 
 ### Primary Colors
 
-- **Indigo**: `indigo-600` (primary actions), `indigo-700` (hover states)
+- **Brand accent**: `brand-600` (primary actions), `brand-700` (hover states). The `brand-*` scale is declared in `packages/vira/src/style.css` as a `@theme` alias to Tailwind's cyan today — change those `var(--color-cyan-*)` aliases to shift the brand without touching widget code.
 - **Background**: `gray-50` (page), `white` (cards), `gray-200` (dividers)
   - **Dark mode**: `gray-900` (page), `gray-800` (cards), `gray-700` (dividers)
 
@@ -37,8 +42,10 @@ Clean, minimal CI/CD application design system emphasizing clarity and functiona
 
 ### Font Families
 
-- **Sans-serif**: Inter (variable font, 300-700 weights), system-ui fallbacks
-- **Monospace**: JetBrains Mono (for logs, code, and technical values)
+- **Sans-serif**: Geist (variable font, 300-700 weights), system-ui fallbacks
+- **Monospace**: Geist Mono (for logs, code, and technical values)
+
+Tokens are declared as `--font-sans` / `--font-mono` in `packages/vira/src/style.css` (the Tailwind v4 input file). Generated `static/tailwind.css` exposes them via `font-sans` / `font-mono` utility classes — prefer those over hard-coded `font-family` declarations.
 
 ### Size Scale
 
