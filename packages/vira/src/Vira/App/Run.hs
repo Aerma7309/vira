@@ -34,6 +34,7 @@ import Vira.App qualified as App
 import Vira.App.CLI (CLISettings (..), Command (..), GlobalSettings (..), WebSettings (..))
 import Vira.App.CLI qualified as CLI
 import Vira.App.InstanceInfo (InstanceInfo (..), getInstanceInfo, platform)
+import Vira.App.Type (HooksConfig)
 import Vira.CI.AutoBuild qualified as AutoBuild
 import Vira.CI.Cleanup.Daemon qualified as CleanupDaemon
 import Vira.CI.Context (CIMode (..), ViraContext (..))
@@ -64,6 +65,16 @@ withTerminationHandler termException action = do
   _ <- installHandler sigINT oldHandler Nothing
   pure result
 
+-- | Parse a --hooks JSON argument into a HooksConfig map
+parseHooksConfig :: Maybe Text -> IO HooksConfig
+parseHooksConfig Nothing = pure Map.empty
+parseHooksConfig (Just jsonText) =
+  case decode $ encodeUtf8 jsonText of
+    Nothing -> do
+      putTextLn "Error: Invalid --hooks JSON"
+      exitFailure
+    Just h -> pure h
+
 -- | Run the Vira application
 runVira :: IO ()
 runVira = do
@@ -89,13 +100,7 @@ runVira = do
           importFromFileOrStdin acid (Just filePath)
 
         -- Parse hooks JSON if provided
-        hooks <- case hooksJson webSettings of
-          Nothing -> pure Map.empty
-          Just jsonText -> case decode $ encodeUtf8 jsonText of
-            Nothing -> do
-              putTextLn "Error: Invalid --hooks JSON"
-              exitFailure
-            Just h -> pure h
+        hooks <- parseHooksConfig (hooksJson webSettings)
 
         startTime <- getCurrentTime
         instanceInfo <- getInstanceInfo
@@ -151,13 +156,7 @@ runVira = do
     runCI gs mDir ciMode hooksJsonArg = do
       dir <- maybe getCurrentDirectory makeAbsolute mDir
       -- Parse hooks JSON if provided
-      hooks <- case hooksJsonArg of
-        Nothing -> pure Map.empty
-        Just jsonText -> case decode $ encodeUtf8 jsonText of
-          Nothing -> do
-            putTextLn "Error: Invalid --hooks JSON"
-            exitFailure
-          Just h -> pure h
+      hooks <- parseHooksConfig hooksJsonArg
       -- Throw Terminated on Ctrl+C so Process.hs cleanup logic can terminate nix processes
       exitCode <- withTerminationHandler Terminated $ App.runAppCLI gs $ do
         result <- runErrorNoCallStack @Text $ do
