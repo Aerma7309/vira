@@ -5,7 +5,7 @@ module Vira.CI.ConfigurationSpec (spec) where
 
 import Data.Time (UTCTime (UTCTime), fromGregorian, secondsToDiffTime)
 import Effectful.Git (BranchName (..), Commit (..), CommitID (..), RepoName (..))
-import Language.Haskell.Hint.Nix (ghcLibDir)
+import Language.Haskell.Hint.Nix (ghcLibDir, runInterpreterWithNixPackageDb)
 import Language.Haskell.Interpreter.Unsafe (unsafeRunInterpreterWithArgsLibdir)
 import Paths_vira (getDataFileName)
 import System.Environment (getExecutablePath)
@@ -21,8 +21,9 @@ import Prelude hiding (id)
 {- | Locate the cabal in-place package DB by walking up from the test binary.
 The binary is at dist-newstyle/build/.../vira-tests and the package DB
 is at dist-newstyle/packagedb/ghc-<version>.
+Returns 'Nothing' when running in a Nix build (no dist-newstyle in path).
 -}
-getCabalInplacePkgDb :: IO FilePath
+getCabalInplacePkgDb :: IO (Maybe FilePath)
 getCabalInplacePkgDb = do
   exePath <- getExecutablePath
   let dirs = splitDirectories exePath
@@ -30,10 +31,9 @@ getCabalInplacePkgDb = do
       beforeDistNewstyle = takeWhile (/= "dist-newstyle") dirs
       -- Find the GHC version directory (matches "ghc-*")
       afterDistNewstyle = drop 1 (dropWhile (/= "dist-newstyle") dirs)
-      ghcDir = case filter ("ghc-" `isPrefixOf`) afterDistNewstyle of
-        (d : _) -> d
-        [] -> error $ toText $ "Cannot find GHC version dir in path: " ++ exePath
-  pure $ joinPath (beforeDistNewstyle ++ ["dist-newstyle", "packagedb", ghcDir])
+  case filter ("ghc-" `isPrefixOf`) afterDistNewstyle of
+    (ghcDir : _) -> pure $ Just $ joinPath (beforeDistNewstyle ++ ["dist-newstyle", "packagedb", ghcDir])
+    [] -> pure Nothing
 
 -- Test data
 testBranchStaging :: Branch
@@ -95,12 +95,14 @@ spec = describe "Vira.CI.Configuration" $ do
 
     it "applies hooks configuration correctly" $ do
       -- The Nix package DB may not include the latest vira-ci-types with Hooks,
-      -- so we use applyConfigWithRunner with the cabal in-place package DB.
-      -- We locate it relative to the test binary's autogen directory.
+      -- so we try the cabal in-place package DB first; fall back to the Nix
+      -- package DB when running in a Nix build (no dist-newstyle in path).
       configPath <- getDataFileName "test/sample-configs/hooks-example.hs"
       configCode <- decodeUtf8 <$> readFileBS configPath
-      cabalPkgDb <- getCabalInplacePkgDb
-      let runner = unsafeRunInterpreterWithArgsLibdir ["-package-db", cabalPkgDb] ghcLibDir
+      mCabalPkgDb <- getCabalInplacePkgDb
+      let runner = case mCabalPkgDb of
+            Just cabalPkgDb -> unsafeRunInterpreterWithArgsLibdir ["-package-db", cabalPkgDb] ghcLibDir
+            Nothing -> runInterpreterWithNixPackageDb
       result <- applyConfigWithRunner runner configCode testContextStaging defaultPipeline
       case result of
         Right pipeline -> do
