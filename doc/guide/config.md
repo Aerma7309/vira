@@ -143,8 +143,8 @@ pipeline
   }
 ```
 
-> [!IMPORTANT]
-> The hook name (`"notify-jenkins"` in the example above) must be registered by the CI machine operator — see [Operator setup](#operator-setup-required) below.
+> [!WARNING]
+> The hook name (`"notify-jenkins"` in the example above) must be registered by the CI machine operator — see [[config#Operator setup|Operator setup]] below.
 
 **Environment variables** are provided to the hook at execution time:
 
@@ -156,7 +156,7 @@ pipeline
 
 The operator controls the hook's behavior entirely — they define the shell command that runs and have full access to environment variables on the CI machine.
 
-#### Operator setup (required)
+#### Operator setup
 
 Hooks are **disabled by default** (empty configuration). The operator must register hook names and their corresponding shell commands via the Nix module:
 
