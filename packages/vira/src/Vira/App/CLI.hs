@@ -72,7 +72,7 @@ data Command
   | ExportCommand
   | ImportCommand
   | InfoCommand
-  | CICommand (Maybe FilePath) CIMode
+  | CICommand (Maybe FilePath) CIMode (Maybe Text)
   deriving stock (Show)
 
 -- | Complete CLI configuration
@@ -214,6 +214,13 @@ ciCommandParser =
             <|> flag' LocalBuild (long "local" <> short 'l' <> help "Build only for the current system")
             <|> pure FullBuild
         )
+    <*> optional
+      ( strOption
+          ( long "hooks"
+              <> metavar "JSON"
+              <> help "JSON string mapping hook names to shell commands, e.g. '{\"notify\":\"curl ...\"}'"
+          )
+      )
 
 -- | Parser for commands
 commandParser :: Parser Command

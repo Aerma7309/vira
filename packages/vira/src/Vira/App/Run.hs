@@ -79,7 +79,7 @@ runVira = do
         ExportCommand -> runExport globalSettings
         ImportCommand -> runImport globalSettings
         InfoCommand -> runInfo
-        CICommand mDir ciMode -> runCI globalSettings mDir ciMode
+        CICommand mDir ciMode hooksJson -> runCI globalSettings mDir ciMode hooksJson
 
     runWebServer :: GlobalSettings -> WebSettings -> IO ()
     runWebServer globalSettings webSettings = do
@@ -147,9 +147,17 @@ runVira = do
       putTextLn $ "Platform: " <> platform instanceInfo
       putTextLn $ "Schema version: " <> show viraDbVersion
 
-    runCI :: GlobalSettings -> Maybe FilePath -> CIMode -> IO ()
-    runCI gs mDir ciMode = do
+    runCI :: GlobalSettings -> Maybe FilePath -> CIMode -> Maybe Text -> IO ()
+    runCI gs mDir ciMode hooksJsonArg = do
       dir <- maybe getCurrentDirectory makeAbsolute mDir
+      -- Parse hooks JSON if provided
+      hooks <- case hooksJsonArg of
+        Nothing -> pure Map.empty
+        Just jsonText -> case decode $ encodeUtf8 jsonText of
+          Nothing -> do
+            putTextLn "Error: Invalid --hooks JSON"
+            exitFailure
+          Just h -> pure h
       -- Throw Terminated on Ctrl+C so Process.hs cleanup logic can terminate nix processes
       exitCode <- withTerminationHandler Terminated $ App.runAppCLI gs $ do
         result <- runErrorNoCallStack @Text $ do
@@ -165,7 +173,7 @@ runVira = do
           commitId <- getCurrentCommit dir
           let ctx = ViraContext status.branch ciMode commitId remoteUrl dir
           tools <- Tool.getAllTools
-          let env = Pipeline.pipelineEnvFromCLI gs.logLevel Pipeline.workspaceContextKeys tools ctx
+          let env = Pipeline.pipelineEnvFromCLI hooks gs.logLevel Pipeline.workspaceContextKeys tools ctx
           runErrorNoCallStack (Pipeline.runPipeline env Program.pipelineProgram) >>= \case
             Left (err :: Pipeline.PipelineError) -> do
               log Error $ show err

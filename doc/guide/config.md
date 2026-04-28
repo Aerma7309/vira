@@ -185,6 +185,9 @@ The operator defines the shell command and controls all aspects of hook executio
 > [!NOTE]
 > Hooks are disabled in `--only-build` mode (local quick builds without side effects).
 
+> [!NOTE]
+> When running `vira ci`, hooks require the `--hooks` flag to provide the hook commands (since there is no operator Nix configuration in CLI mode). For example: `vira ci --hooks '{"notify-jenkins":"curl ..."}'`
+
 ## Conditional Configuration {#cond}
 
 You can customize the pipeline based on branch or repository information:

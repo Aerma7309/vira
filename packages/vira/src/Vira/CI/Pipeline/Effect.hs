@@ -10,7 +10,6 @@ module Vira.CI.Pipeline.Effect (
 import Prelude hiding (asks)
 
 import Colog (Severity)
-import Data.Map.Strict qualified as Map
 import DevourFlake (DevourFlakeResult)
 import Effectful (Eff, Effect, IOE, type (:>))
 import Effectful.Colog.Simple (LogContext (..))
@@ -131,15 +130,15 @@ pipelineEnvFromRemote hooks tools sink excludeKeys ctx =
     }
 
 -- | Construct PipelineEnv for CLI execution (stdout sink with severity filtering)
-pipelineEnvFromCLI :: Severity -> [Text] -> Tools -> ViraContext -> PipelineEnv
-pipelineEnvFromCLI minSeverity excludeKeys tools ctx =
+pipelineEnvFromCLI :: HooksConfig -> Severity -> [Text] -> Tools -> ViraContext -> PipelineEnv
+pipelineEnvFromCLI hooks minSeverity excludeKeys tools ctx =
   PipelineEnv
     { outputLog = Nothing
     , tools = tools
     , viraContext = ctx
     , logSink = filteredStdoutSink minSeverity
     , excludeContextKeys = excludeKeys
-    , availableHooks = Map.empty
+    , availableHooks = hooks
     }
   where
     filteredStdoutSink :: Severity -> Sink Text

@@ -20,8 +20,9 @@ If no directory is specified, runs in the current directory. The directory must 
 
 - `--local` / `-l` - Build only for the current system, run all stages
 - `--only-build` / `-b` - Build only for the current system, skip cache and signoff stages
+- `--hooks JSON` - JSON string mapping hook names to shell commands, e.g. `'{"notify":"curl ..."}'`
 
-These flags are mutually exclusive.
+These flags are mutually exclusive (except `--hooks` which can be combined with any mode).
 
 ### Default Behavior {#default}
 
@@ -32,6 +33,7 @@ By default, `vira ci` respects the [[config|`vira.hs`]] configuration for all st
 - Builds for all configured `build.systems`
 - Enables creating per-system signoffs (e.g., `vira/x86_64-linux`) during local development
 - Pushes to cache if configured
+- Runs post-build hooks if `--hooks` is provided and `vira.hs` configures `hooks.onSuccess`
 
 ### Local Mode {#local}
 
@@ -67,7 +69,7 @@ When `--only-build` is used:
 - Ignores `build.systems` from config (uses current system only)
 - Skips cache push even if configured
 - Skips signoff creation even if configured
-- Skips hooks even if configured
+- Skips hooks even if configured (or if `--hooks` is provided)
 
 ### Examples
 
@@ -83,6 +85,9 @@ vira ci -l
 
 # Quick build-only mode (no cache, no signoff)
 vira ci -b
+
+# Run CI with a post-build hook
+vira ci --hooks '{"notify-jenkins":"curl -X POST https://jenkins.example.com/build"}'
 ```
 
 ## Export/Import State {#import-export}
