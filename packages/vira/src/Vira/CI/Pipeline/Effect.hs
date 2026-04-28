@@ -17,10 +17,9 @@ import Effectful.Reader.Static qualified as ER
 import Effectful.TH
 import LogSink (Sink (..))
 import System.FilePath ((</>))
-import Vira.App.Type (HooksConfig)
 import Vira.CI.Context (ViraContext (..))
 import Vira.CI.Log (ViraLog (..), decodeViraLog, encodeViraLog, renderViraLogCLI)
-import Vira.CI.Pipeline.Type (ViraPipeline)
+import Vira.CI.Pipeline.Type (HooksConfig, ViraPipeline)
 import Vira.Environment.Tool.Type.Tools (Tools)
 import Vira.State.Type (Branch (..), Repo)
 

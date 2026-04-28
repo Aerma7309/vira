@@ -18,7 +18,7 @@ module Vira.CI.Pipeline.Type where
 
 import Data.String (IsString (..))
 import GHC.Records.Compat
-import Relude (Bool (..), Eq (..), FilePath, Generic, Maybe (..), NonEmpty, Show, Text, notElem)
+import Relude (Bool (..), Eq (..), FilePath, Generic, Map, Maybe (..), NonEmpty, Show, Text, notElem)
 import System.Nix.System (System)
 
 -- | CI Pipeline configuration types
@@ -105,6 +105,9 @@ newtype HookName = HookName Text
 -- | Unwrap a 'HookName' to its underlying 'Text'
 hookNameText :: HookName -> Text
 hookNameText (HookName t) = t
+
+-- | Map of hook names to their shell commands (operator configuration)
+type HooksConfig = Map Text Text
 
 {- | Post-build hooks: named operator-registered commands to run after successful builds.
 

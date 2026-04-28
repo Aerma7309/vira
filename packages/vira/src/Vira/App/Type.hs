@@ -13,15 +13,13 @@ import Servant.Links (Link)
 import System.Nix.Cache.Keys (PublicKey)
 import Vira.App.InstanceInfo (InstanceInfo)
 import Vira.CI.AutoBuild.Type (AutoBuildSettings)
+import Vira.CI.Pipeline.Type (HooksConfig)
 import Vira.CI.Worker.Type (JobWorkerState)
 import Vira.Environment.Tool.Type.Tools (Tools)
 import Vira.Refresh.Type (RefreshState)
 import Vira.State.Core (ViraState)
 import Vira.Supervisor.Type (TaskSupervisor)
 import Vira.Web.LinkTo.Type (LinkTo)
-
--- | Map of hook names to their shell commands
-type HooksConfig = Map Text Text
 
 -- | Application-wide state available in 'Effectful.Eff' stack
 data ViraRuntimeState = ViraRuntimeState
