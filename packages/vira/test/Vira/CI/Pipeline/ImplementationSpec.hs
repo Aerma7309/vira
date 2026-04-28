@@ -10,8 +10,8 @@ import System.Directory (removeFile)
 import System.IO (hClose, openTempFile)
 import Test.Hspec
 import Vira.App.Type qualified as App (HooksConfig)
-import Vira.CI.Context (CIMode (..), ViraContext (..))
-import Vira.CI.Pipeline.Implementation (defaultPipeline, hookEnvVars, repoNameFromCloneUrl, runHook)
+import Vira.CI.Context (CIMode (..), ViraContext (..), repoNameFromCloneUrl)
+import Vira.CI.Pipeline.Implementation (defaultPipeline, hookEnvVars, runHook)
 import Vira.CI.Pipeline.Type (Hooks (..), ViraPipeline (..))
 import Prelude hiding (id)
 

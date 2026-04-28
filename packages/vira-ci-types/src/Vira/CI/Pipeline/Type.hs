@@ -93,10 +93,18 @@ newtype CacheStage = CacheStage
   }
   deriving stock (Generic, Show)
 
--- | Name of a hook registered by the operator
+{- | Name of a hook registered by the operator
+
+Future: either encode an invariant (e.g. non-empty, no spaces) or delete
+the newtype and use Text directly.
+-}
 newtype HookName = HookName Text
   deriving stock (Generic, Show, Eq)
   deriving newtype (IsString)
+
+-- | Unwrap a 'HookName' to its underlying 'Text'
+hookNameText :: HookName -> Text
+hookNameText (HookName t) = t
 
 {- | Post-build hooks: named operator-registered commands to run after successful builds.
 
@@ -123,7 +131,12 @@ Environment variables passed to hooks (derived from ViraContext):
 -}
 newtype Hooks = Hooks
   { onSuccess :: Maybe HookName
-  -- ^ Hook to run after a successful pipeline run
+  {- ^ Hook to run after a successful pipeline run
+
+  Volatility axis: trigger condition. Currently only 'onSuccess' exists.
+  When 'onFailure' or 'onAlways' are added, this single-field record will
+  become a multi-field record — restructure then.
+  -}
   }
   deriving stock (Generic, Show)
 

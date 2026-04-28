@@ -8,7 +8,6 @@ module Vira.CI.Pipeline.Implementation (
   -- * Used in tests
   defaultPipeline,
   hookEnvVars,
-  repoNameFromCloneUrl,
   runHook,
 ) where
 
@@ -22,7 +21,6 @@ import Colog (Severity (..))
 import Colog.Message (RichMessage)
 import Data.Aeson (eitherDecodeFileStrict)
 import Data.Map qualified as Map
-import Data.Text qualified as T
 import DevourFlake (DevourFlakeArgs (..), devourFlake, prefetchFlakeInputs)
 import DevourFlake.Result (DevourFlakeResult (..), SystemOutputs (..), extractSystems)
 import Effectful
@@ -47,12 +45,12 @@ import System.Nix.Core (nix)
 import System.Nix.System (System (..))
 import System.Process (CreateProcess (..), proc, waitForProcess, withCreateProcess)
 import Vira.CI.Configuration qualified as Configuration
-import Vira.CI.Context (CIMode (..), ViraContext (..))
+import Vira.CI.Context (CIMode (..), ViraContext (..), repoNameFromCloneUrl)
 import Vira.CI.Error (ConfigurationError (..), PipelineError (..), pipelineToolError)
 import Vira.CI.Pipeline.Effect
 import Vira.CI.Pipeline.Process (runProcess)
 import Vira.CI.Pipeline.Signoff qualified as Signoff
-import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), HookName (..), Hooks (..), NixConfig (..), SignoffStage (..), ViraPipeline (..), allowedNixOptions, validateNixOptions)
+import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), HookName, Hooks (..), NixConfig (..), SignoffStage (..), ViraPipeline (..), allowedNixOptions, hookNameText, validateNixOptions)
 import Vira.Environment.Tool.Tools.Attic qualified as AtticTool
 import Vira.Environment.Tool.Type.ToolData (status)
 import Vira.Environment.Tool.Type.Tools (attic)
@@ -363,35 +361,26 @@ hookEnvVars ctx =
   , ("VIRA_REPO", repoNameFromCloneUrl ctx.cloneUrl)
   ]
 
-{- | Get repo name from clone URL or use a default.
-Takes the last component of the URL path, stripping any .git suffix.
--}
-repoNameFromCloneUrl :: Maybe Text -> Text
-repoNameFromCloneUrl Nothing = "unknown"
-repoNameFromCloneUrl (Just url) =
-  let pathPart = T.takeWhileEnd (/= '/') url
-      withoutSuffix = if T.isSuffixOf ".git" pathPart then T.dropEnd 4 pathPart else pathPart
-   in if T.null withoutSuffix then "unknown" else withoutSuffix
-
 -- | Execute a named hook command with environment variables
 runHook :: HooksConfig -> HookName -> [(Text, Text)] -> FilePath -> IO (Either Text ())
-runHook hooksConfig (HookName name) envVars workDir =
-  case Map.lookup name hooksConfig of
-    Nothing -> pure $ Left $ "Hook '" <> name <> "' not found in operator configuration"
-    Just cmd -> do
-      -- Inherit the current environment and merge hook vars into it,
-      -- so that PATH (and other env) is available to the hook command.
-      currentEnv <- getEnvironment
-      let processEnv = map (bimap toString toString) envVars <> currentEnv
-      let cp =
-            (proc "sh" ["-c", toString cmd])
-              { env = Just processEnv
-              , cwd = Just workDir
-              }
-      exitCode <- withCreateProcess cp $ \_ _ _ ph -> waitForProcess ph
-      case exitCode of
-        ExitSuccess -> pure $ Right ()
-        ExitFailure code -> pure $ Left $ "Hook command exited with code " <> show code
+runHook hooksConfig hookName envVars workDir =
+  let name = hookNameText hookName
+   in case Map.lookup name hooksConfig of
+        Nothing -> pure $ Left $ "Hook '" <> name <> "' not found in operator configuration"
+        Just cmd -> do
+          -- Inherit the current environment and merge hook vars into it,
+          -- so that PATH (and other env) is available to the hook command.
+          currentEnv <- getEnvironment
+          let processEnv = map (bimap toString toString) envVars <> currentEnv
+          let cp =
+                (proc "sh" ["-c", toString cmd])
+                  { env = Just processEnv
+                  , cwd = Just workDir
+                  }
+          exitCode <- withCreateProcess cp $ \_ _ _ ph -> waitForProcess ph
+          case exitCode of
+            ExitSuccess -> pure $ Right ()
+            ExitFailure code -> pure $ Left $ "Hook command exited with code " <> show code
 
 -- | Implementation: Execute post-build hooks
 postBuildImpl ::
@@ -406,22 +395,35 @@ postBuildImpl ::
   Eff es ()
 postBuildImpl pipeline _buildResults = do
   env <- ER.ask @PipelineEnv
-  let ctx = env.viraContext
-      mHookName = pipeline.hooks.onSuccess
-  case mHookName of
+  case pipeline.hooks.onSuccess of
     Nothing -> logPipeline Info "No post-build hook configured, skipping"
-    Just hookName -> do
-      let envVars = hookEnvVars ctx
-      logPipeline Info $ "Running post-build hook: " <> case hookName of HookName n -> n
-      result <- liftIO $ runHook env.availableHooks hookName envVars ctx.repoDir
-      case result of
-        Left err ->
-          throwError $
-            pipelineToolError
-              ("Post-build hook '" <> case hookName of HookName n -> n <> "' failed: " <> err)
-              (Nothing :: Maybe Text)
-        Right () ->
-          logPipeline Info $ "Post-build hook '" <> case hookName of HookName n -> n <> "' succeeded"
+    Just hookName -> executeHook env hookName
+
+-- | Execute a hook: look up its command, run it, and handle the result
+executeHook ::
+  ( Log (RichMessage IO) :> es
+  , IOE :> es
+  , ER.Reader LogContext :> es
+  , ER.Reader PipelineEnv :> es
+  , Error PipelineError :> es
+  ) =>
+  PipelineEnv ->
+  HookName ->
+  Eff es ()
+executeHook env hookName = do
+  let ctx = env.viraContext
+      envVars = hookEnvVars ctx
+      name = hookNameText hookName
+  logPipeline Info $ "Running post-build hook: " <> name
+  result <- liftIO $ runHook env.availableHooks hookName envVars ctx.repoDir
+  case result of
+    Left err ->
+      throwError $
+        pipelineToolError
+          ("Post-build hook '" <> name <> "' failed: " <> err)
+          (Nothing :: Maybe Text)
+    Right () ->
+      logPipeline Info $ "Post-build hook '" <> name <> "' succeeded"
 
 -- | Default pipeline configuration
 defaultPipeline :: ViraPipeline

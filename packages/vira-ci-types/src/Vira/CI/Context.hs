@@ -8,8 +8,10 @@
 module Vira.CI.Context (
   ViraContext (..),
   CIMode (..),
+  repoNameFromCloneUrl,
 ) where
 
+import Data.Text qualified as T
 import Effectful.Git (BranchName, CommitID)
 import GHC.Records.Compat
 
@@ -59,3 +61,13 @@ instance HasField "cloneUrl" ViraContext (Maybe Text) where
 
 instance HasField "repoDir" ViraContext FilePath where
   hasField (ViraContext branch ciMode commitId cloneUrl repoDir) = (\x -> ViraContext branch ciMode commitId cloneUrl x, repoDir)
+
+{- | Get repo name from clone URL or use a default.
+Takes the last component of the URL path, stripping any .git suffix.
+-}
+repoNameFromCloneUrl :: Maybe Text -> Text
+repoNameFromCloneUrl Nothing = "unknown"
+repoNameFromCloneUrl (Just url) =
+  let pathPart = T.takeWhileEnd (/= '/') url
+      withoutSuffix = if T.isSuffixOf ".git" pathPart then T.dropEnd 4 pathPart else pathPart
+   in if T.null withoutSuffix then "unknown" else withoutSuffix

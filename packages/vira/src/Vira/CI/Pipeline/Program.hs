@@ -17,7 +17,7 @@ import System.Nix.System (System (..))
 import Vira.CI.Context (ViraContext (..))
 import Vira.CI.Error (PipelineError (..))
 import Vira.CI.Pipeline.Effect
-import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), HookName (..), Hooks (..), NixConfig (..), SignoffStage (..), ViraPipeline (..))
+import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), Hooks (..), NixConfig (..), SignoffStage (..), ViraPipeline (..), hookNameText)
 import Vira.State.Type (Branch, Repo)
 
 -- | Pretty-print pipeline configuration in a concise format
@@ -55,7 +55,7 @@ prettyPipeline ViraPipeline {build = buildStage, nix = nixCfg, cache = cacheStag
 
     prettyHooks :: Hooks -> Doc ann
     prettyHooks (Hooks Nothing) = "disabled (no hook configured)"
-    prettyHooks (Hooks (Just (HookName name))) = "enabled" <+> parens ("onSuccess:" <+> pretty name)
+    prettyHooks (Hooks (Just name)) = "enabled" <+> parens ("onSuccess:" <+> pretty (hookNameText name))
 
 -- | Pipeline program for CLI (uses existing local directory)
 pipelineProgram ::
