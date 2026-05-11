@@ -41,21 +41,25 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
       let vars = hookEnvVars testContext
       lookup "VIRA_REPO" vars `shouldBe` Just "test-repo"
 
+    it "omits VIRA_REPO when cloneUrl is absent" $ do
+      let vars = hookEnvVars testContext {cloneUrl = Nothing}
+      lookup "VIRA_REPO" vars `shouldBe` Nothing
+
   describe "repoNameFromCloneUrl" $ do
-    it "returns 'unknown' for Nothing" $ do
-      repoNameFromCloneUrl Nothing `shouldBe` "unknown"
+    it "returns Nothing for Nothing" $ do
+      repoNameFromCloneUrl Nothing `shouldBe` Nothing
 
     it "strips .git suffix from HTTPS URL" $ do
-      repoNameFromCloneUrl (Just "https://example.com/test-repo.git") `shouldBe` "test-repo"
+      repoNameFromCloneUrl (Just "https://example.com/test-repo.git") `shouldBe` Just "test-repo"
 
     it "returns last path component when no .git suffix" $ do
-      repoNameFromCloneUrl (Just "https://example.com/my-project") `shouldBe` "my-project"
+      repoNameFromCloneUrl (Just "https://example.com/my-project") `shouldBe` Just "my-project"
 
     it "handles SSH URL format" $ do
-      repoNameFromCloneUrl (Just "git@github.com:user/vira.git") `shouldBe` "vira"
+      repoNameFromCloneUrl (Just "git@github.com:user/vira.git") `shouldBe` Just "vira"
 
-    it "returns 'unknown' for edge case of only .git" $ do
-      repoNameFromCloneUrl (Just "https://example.com/.git") `shouldBe` "unknown"
+    it "returns Nothing for edge case of only .git" $ do
+      repoNameFromCloneUrl (Just "https://example.com/.git") `shouldBe` Nothing
 
   describe "runHook" $ do
     it "returns Left when hook name not found in config" $ do

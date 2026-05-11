@@ -62,12 +62,15 @@ instance HasField "cloneUrl" ViraContext (Maybe Text) where
 instance HasField "repoDir" ViraContext FilePath where
   hasField (ViraContext branch ciMode commitId cloneUrl repoDir) = (\x -> ViraContext branch ciMode commitId cloneUrl x, repoDir)
 
-{- | Get repo name from clone URL or use a default.
-Takes the last component of the URL path, stripping any .git suffix.
+{- | Extract a repo name from a clone URL.
+
+Returns the last path component with any @.git@ suffix stripped.
+'Nothing' when no clone URL is configured or the URL has no non-empty
+final component.
 -}
-repoNameFromCloneUrl :: Maybe Text -> Text
-repoNameFromCloneUrl Nothing = "unknown"
+repoNameFromCloneUrl :: Maybe Text -> Maybe Text
+repoNameFromCloneUrl Nothing = Nothing
 repoNameFromCloneUrl (Just url) =
   let pathPart = T.takeWhileEnd (/= '/') url
       withoutSuffix = if T.isSuffixOf ".git" pathPart then T.dropEnd 4 pathPart else pathPart
-   in if T.null withoutSuffix then "unknown" else withoutSuffix
+   in if T.null withoutSuffix then Nothing else Just withoutSuffix

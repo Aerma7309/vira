@@ -358,8 +358,8 @@ hookEnvVars :: ViraContext -> [(Text, Text)]
 hookEnvVars ctx =
   [ ("VIRA_BRANCH", toText ctx.branch)
   , ("VIRA_COMMIT_ID", toText ctx.commitId)
-  , ("VIRA_REPO", repoNameFromCloneUrl ctx.cloneUrl)
   ]
+    <> maybe [] (\name -> [("VIRA_REPO", name)]) (repoNameFromCloneUrl ctx.cloneUrl)
 
 -- | Execute a named hook command with environment variables
 runHook :: HooksConfig -> HookName -> [(Text, Text)] -> FilePath -> IO (Either Text ())
