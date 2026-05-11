@@ -33,7 +33,7 @@ By default, `vira ci` respects the [[config|`vira.hs`]] configuration for all st
 - Builds for all configured `build.systems`
 - Enables creating per-system signoffs (e.g., `vira/x86_64-linux`) during local development
 - Pushes to cache if configured
-- Runs post-build hooks if `--hooks` is provided and `vira.hs` configures `hooks.onSuccess`
+- Runs post-build hooks when `vira.hs` configures `hooks.onSuccess`. The named hook command must be supplied at the CLI via `--hooks` — running `vira ci` without `--hooks` while `hooks.onSuccess` is set will fail with "Hook '...' not found in operator configuration"
 
 ### Local Mode {#local}
 
@@ -132,3 +132,4 @@ When running `vira web`, these additional options are available:
 - `--max-concurrent-builds COUNT` - Maximum concurrent CI builds (defaults to 2)
 - `--auto-build-new-branches` - Auto-build new branches (default: only auto-build branches built at least once)
 - `--job-retention-days DAYS` - Delete jobs older than N days (default: 14, set to 0 to disable cleanup). See [[cleanup]] for details.
+- `--hooks JSON` - JSON object mapping hook names to shell commands, e.g. `'{"notify":"curl ..."}'`. In NixOS / home-manager deployments this is supplied automatically from `services.vira.hooks`.
