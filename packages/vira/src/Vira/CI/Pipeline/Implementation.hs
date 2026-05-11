@@ -162,7 +162,7 @@ loadConfigImpl = do
       BuildOnly ->
         pipeline
           { signoff = pipeline.signoff {enable = False}
-          , cache = CacheStage {url = Nothing}
+          , cache = pipeline.cache {url = Nothing}
           , build = BuildStage {flakes = pipeline.build.flakes, systems = []}
           }
 
@@ -445,36 +445,29 @@ postBuildImpl ::
   ) =>
   ViraPipeline ->
   Eff es ()
-postBuildImpl pipeline = do
-  env <- ER.ask @PipelineEnv
-  case pipeline.hooks.onSuccess of
-    Nothing -> logPipeline Info "No post-build hook configured, skipping"
-    Just hookName -> executeHook env hookName
-
--- | Execute a hook: look up its command, run it, and handle the result
-executeHook ::
-  ( Log (RichMessage IO) :> es
-  , IOE :> es
-  , ER.Reader LogContext :> es
-  , ER.Reader PipelineEnv :> es
-  , Error PipelineError :> es
-  ) =>
-  PipelineEnv ->
-  Text ->
-  Eff es ()
-executeHook env hookName = do
-  let ctx = env.viraContext
-      envVars = hookEnvVars ctx
-  logPipeline Info $ "Running post-build hook: " <> hookName
-  result <- liftIO $ runHook env.availableHooks hookName envVars ctx.repoDir env.logSink (Just hookTimeoutMicros)
-  case result of
-    Left err ->
-      throwError $
-        pipelineToolError
-          ("Post-build hook '" <> hookName <> "' failed: " <> err)
-          (Nothing :: Maybe Text)
-    Right () ->
-      logPipeline Info $ "Post-build hook '" <> hookName <> "' succeeded"
+postBuildImpl pipeline = case pipeline.hooks.onSuccess of
+  Nothing -> logPipeline Info "No post-build hook configured, skipping"
+  Just hookName -> do
+    env <- ER.ask @PipelineEnv
+    let ctx = env.viraContext
+    logPipeline Info $ "Running post-build hook: " <> hookName
+    result <-
+      liftIO $
+        runHook
+          env.availableHooks
+          hookName
+          (hookEnvVars ctx)
+          ctx.repoDir
+          env.logSink
+          (Just hookTimeoutMicros)
+    case result of
+      Left err ->
+        throwError $
+          pipelineToolError
+            ("Post-build hook '" <> hookName <> "' failed: " <> err)
+            (Nothing :: Maybe Text)
+      Right () ->
+        logPipeline Info $ "Post-build hook '" <> hookName <> "' succeeded"
 
 -- | Maximum hook runtime before vira kills the subprocess (5 minutes).
 hookTimeoutMicros :: Int
