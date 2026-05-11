@@ -1,6 +1,6 @@
 lockfile_version: '1'
-generated_at: '2026-05-01T18:08:50.301794+00:00'
-apm_version: 0.11.0
+generated_at: '2026-05-11T16:42:13.071844+00:00'
+apm_version: 0.13.0
 dependencies:
 - repo_url: anthropics/skills
   host: github.com
@@ -24,7 +24,7 @@ dependencies:
   content_hash: sha256:8f48e067e59da48c3ac90b4e2228ebb4ecfd988375b40efe831339d9a493accd
 - repo_url: srid/agency
   host: github.com
-  resolved_commit: 94b7d8b687c152aba9e36a02f24caff7b5cb6d92
+  resolved_commit: 3c86f74c8a9a39cb8a7c11a7ebd97ee524dc91ef
   resolved_ref: master
   package_type: apm_package
   deployed_files:
@@ -54,14 +54,14 @@ dependencies:
   - .codex/agents/lowy.toml
   - .codex/hooks/agency/scripts/do-stop-guard.sh
   deployed_file_hashes:
-    .claude/agents/hickey.md: sha256:edde9b0d3b27b947b7372f662b2e8652d136e0bb9af7924892b00450a1e586bc
-    .claude/agents/lowy.md: sha256:a1c8e5ba115439bcfa0d7e331f96e71b2d690ff2e5fb9b824bb5f588eb43ac75
+    .claude/agents/hickey.md: sha256:10d9a4350a85752dc6658af8e0efb3d8be41803a2b6c73464e3d5b7a840435ad
+    .claude/agents/lowy.md: sha256:05aff7f6a91149a42c1fb9a3ca382a6f77bc39ac8a8d45436d443dd3349fb11e
     .claude/hooks/agency/scripts/do-stop-guard.sh: sha256:cb033f86c15ffd3d09d8e4b74a61f55a70def4cc4131cc013b7368a2d23f3f33
     .claude/rules/apm-sources.md: sha256:65640c481c347cc4edf50603f784d0b448b6395acc43419a4f8ad0c53de2db4b
     .codex/agents/hickey.toml: sha256:f508bacedcac2916cf1e29a11f2ac161483ffc2acf182c8f1c00c26d14073c00
     .codex/agents/lowy.toml: sha256:c57b72c43687ef255a4490f65984fe556325cb9847a5626e43c2a7addea049e4
     .codex/hooks/agency/scripts/do-stop-guard.sh: sha256:cb033f86c15ffd3d09d8e4b74a61f55a70def4cc4131cc013b7368a2d23f3f33
-  content_hash: sha256:71dc1699460a8c8bb088d901ff5250231288813f7f2ee69ffc05cf3382bc65db
+  content_hash: sha256:0de8b45117e0a5a9d8c192bbf459d97a591b575d811e1f0487d1da5c0a0f2a77
 local_deployed_files:
 - .agents/skills/haskell
 - .agents/skills/vira-design

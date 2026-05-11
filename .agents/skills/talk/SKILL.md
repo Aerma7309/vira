@@ -1,7 +1,7 @@
 ---
 name: talk
 description: Enter talk mode — conversation and research, no repo changes. ONLY invoke when the user explicitly types `/talk` or `$talk`; never auto-select from a natural-language question or design discussion.
-argument-hint: "[--no-laconic] [--review-model=<opus|sonnet|haiku>] <topic or question>"
+argument-hint: "[--no-laconic] <topic or question>"
 ---
 
 # Probe (Talk Mode)
@@ -26,7 +26,7 @@ Talk mode is a research-first workflow, not an off-the-cuff conversation. Before
 
 ### First-turn gate
 
-Your first substantive response must not contain recommendations, fixes, "suspects," or claims about third-party library behavior unless you have **already read the relevant source in this session**. If you haven't yet, your first response is the research itself — normally a single `Agent(subagent_type=Explore)` call. Direct `Read`s in the main turn are allowed only for narrow, single-file lookups you can name up front. Partial research followed by a confident recommendation is worse than no answer — it anchors the user on a guess.
+Your first substantive response must not contain recommendations, fixes, "suspects," or claims about third-party library behavior unless **the main agent has already read the relevant source in this session** (`Read` or `Grep` tool calls in the current turn — a subagent reading on your behalf does not count). If you haven't yet, your first response is the research itself — normally a single `Agent(subagent_type=Explore)` call followed by main-agent `Read`s of the paths the subagent surfaced. Direct `Read`s in the main turn are allowed only for narrow, single-file lookups you can name up front. Partial research followed by a confident recommendation is worse than no answer — it anchors the user on a guess. **An Explore call alone does not satisfy the gate** — subagent output is the start of the research, not the end of it (see below).
 
 ### When to use the Explore subagent
 
@@ -41,13 +41,15 @@ For narrow, single-file lookups, `Grep`/`Read` directly is fine. The line is: if
 
 **When the source isn't on disk.** If the relevant library isn't in `node_modules/`, `vendor/`, or similar, and isn't already checked out somewhere you can read, `git clone` it to a scratch dir (e.g. `/tmp/<name>`) at the version the project actually uses, then read it there. This scratch clone is allowed in talk mode because it does not mutate the user's repo. Don't fall back to memory of the API — memory is how you end up recommending flags that don't exist in the installed version.
 
-**Subagent output is a lead, not ground truth.** Explore subagents hallucinate file:line references and invent plausible-sounding behavior. If you haven't verified a claim yourself, mark it "per subagent, unverified" so the user can weigh it — don't launder subagent guesses into confident statements.
+**Subagent output is a lead, not ground truth.** Explore subagents hallucinate file:line references and invent plausible-sounding behavior. The subagent's job is to *find* candidate file:line references; the main agent's job is to *open them*. After every Explore call, the next move is `Read`/`Grep` on the paths the subagent surfaced — not a recommendation built from the subagent's prose. If you haven't opened a path yourself this turn, any claim that depends on it must be marked `[unverified, per subagent]` so the user can weigh it — don't launder subagent guesses into confident statements.
 
 ### Citation requirement
 
-Every non-trivial claim in your response must be backed by a `file:line` reference you actually read in this session. If you cannot cite a file:line for a claim, either go read the source and come back, or explicitly mark the claim as a guess (e.g. "I'm guessing — haven't verified") so the user can weigh it accordingly.
+Every non-trivial claim in your response must be backed by a `file:line` reference **the main agent opened** (via `Read` or `Grep`) in this session. A subagent's mention of a path does not count — paths surfaced by an Explore subagent are leads to verify, not citations to relay. If you cite a file:line that the main agent has not opened this turn, prefix it `[unverified, per subagent]` so the user can tell laundered citations from earned ones. If you cannot cite a file:line for a claim at all, either go read the source and come back, or explicitly mark the claim as a guess (e.g. "I'm guessing — haven't verified").
 
-**Claims about third-party library behavior require file:line references inside that library's source** — not just citations in your own project. "`Terminal.tsx:139` calls `clearTextureAtlas()`" tells you nothing about what `clearTextureAtlas()` _does_; you need a citation in the library's own file to back any claim about its effect.
+**Claims about third-party library behavior require file:line references inside that library's source** — not just citations in your own project. "`Terminal.tsx:139` calls `clearTextureAtlas()`" tells you nothing about what `clearTextureAtlas()` *does*; you need a citation in the library's own file to back any claim about its effect. For "does library X support Y?" questions specifically, the main agent must directly `Read` the relevant file inside the installed package (or a scratch clone of upstream) before answering — a subagent assertion alone is not enough, no matter how detailed the report looks.
+
+**If the user challenges your fact-check** — "did you actually read this?", "did you verify all the claims?" — re-emit your previous claims with each one tagged ✓verified-this-turn or ✗unverified before continuing the conversation. Don't re-argue the conclusion until the provenance is straight.
 
 ### Hedge words are a stop signal
 
@@ -62,7 +64,8 @@ If you're about to emit "probably", "almost certainly", "I suspect", "my #1 susp
 - ❌ "Want me to check whether `fit()` is actually a no-op?" — don't ask, check.
 - ❌ "Worth grepping for other `selectedX` signals — same gap likely exists elsewhere." — if you flagged it, you check it; don't hand the user homework.
 - ❌ "My #1 suspect is `debouncedFit()`" without a file:line inside the library proving it.
-- ❌ Citing a subagent's claim about `FitAddon.ts:45` without opening `FitAddon.ts:45` yourself first.
+- ❌ Citing a subagent's claim about `FitAddon.ts:45` without opening `FitAddon.ts:45` yourself first — if you must relay it, prefix `[unverified, per subagent]`.
+- ❌ "Library X doesn't support Y — `pkg/foo.tsx:168`" when the only thing that opened `foo.tsx` was an Explore subagent. The cite reads identical to a main-agent read; it isn't.
 - ✅ "I read `Viewport.ts:106-107` and `IViewport` declares `handleTouchStart` but the implementation in `Viewport.ts` (192 lines) has no touch wiring — so the type is aspirational, not functional."
 
 ## Behavior
@@ -84,14 +87,14 @@ Use `AskUserQuestion` to collaborate on the cut: propose your split, surface the
 
 Any time the conversation produces a concrete code plan, diff proposal, or design sketch that could be implemented, **invoke both the `lowy` and `hickey` sub-agents on that proposal in parallel before presenting your final recommendation** — do not wait for the user to ask. Use `Agent(subagent_type="lowy")` and `Agent(subagent_type="hickey")` (not the `Skill` tool) so each runs in an isolated context and keeps the main turn lean.
 
-**Revise the recommendation in light of their findings before presenting it.** Invoking the reviewers is not the deliverable — the deliverable is a _post-review_ proposal whose shape already reflects what landed. Concretely: when a finding lands (real complecting, fragmentation, or a missing volatility seam), change the design itself — don't tack the finding onto an unchanged sketch as a critique section the user has to reconcile. When a finding doesn't land, say briefly why. The headline the user reads should be the revised proposal, with the reviewer pass evident in what changed (and what was rejected), not the original sketch with raw sub-agent output appended.
+**Revise the recommendation in light of their findings before presenting it.** Invoking the reviewers is not the deliverable — the deliverable is a *post-review* proposal whose shape already reflects what landed. Concretely: when a finding lands (real complecting, fragmentation, or a missing volatility seam), change the design itself — don't tack the finding onto an unchanged sketch as a critique section the user has to reconcile. When a finding doesn't land, say briefly why. The headline the user reads should be the revised proposal, with the reviewer pass evident in what changed (and what was rejected), not the original sketch with raw sub-agent output appended.
 
 - **Lowy** flags boundaries that track functionality instead of volatility and where a seam would cleanly encapsulate an axis of change.
-- **Hickey** flags structural complecting and fragmentation — concept multiplication, sum-types-as-parallel-fields, hidden coupling at OS or shared-state layers, and the rest of the Layer 3-4 catalog. Hickey on a sketch can drift toward generic critique; in your prompt, instruct it to either land specific complecting/fragmentation risks in _this_ sketch or say explicitly that there's nothing yet to bite into. Generic principles are not findings. Layer 5 (entanglement counts) and the diff-shaped Actions table will be thin on a sketch — that's expected; the design-level layers are the ones that bite here.
+- **Hickey** flags structural complecting and fragmentation — concept multiplication, sum-types-as-parallel-fields, hidden coupling at OS or shared-state layers, and the rest of the Layer 3-4 catalog. Hickey on a sketch can drift toward generic critique; in your prompt, instruct it to either land specific complecting/fragmentation risks in *this* sketch or say explicitly that there's nothing yet to bite into. Generic principles are not findings. Layer 5 (entanglement counts) and the diff-shaped Actions table will be thin on a sketch — that's expected; the design-level layers are the ones that bite here.
 
 Skip both passes only when the turn is pure Q&A with no proposed change (e.g. "how does X work?"). When in doubt, run them. `do` re-runs hickey + lowy post-implement on the real diff, so the talk-mode pass is the design-level rehearsal, not the final word.
 
-**Model override.** If `ARGUMENTS` contains `--review-model=<model>` (accept `opus`, `sonnet`, or `haiku`; strip the flag before treating the rest as the topic), pass `model: "<model>"` in **both** the `Agent(subagent_type="lowy")` and `Agent(subagent_type="hickey")` calls. This overrides the `model: sonnet` in each sub-agent's frontmatter via the `Agent` tool's built-in `model` parameter. Without the flag, omit `model` so the default (sonnet) applies. Reject unknown values with a one-line error instead of silently falling back — a typo shouldn't quietly erase a budget decision.
+**Model selection lives in the skill, not here.** Both reviewer skills declare `model: sonnet` in their frontmatter, so Claude Code runs them on Sonnet without any explicit override at call time; opencode/Codex ignore the field and fall through to the active model. Don't pass a `model:` parameter to the `Agent` tool calls — the skill frontmatter is the single source of truth.
 
 ## Laconic mode (default)
 
@@ -99,12 +102,12 @@ Laconic mode is **on by default**. If `ARGUMENTS` begins with `--no-laconic` (st
 
 When laconic mode is active:
 
-- One or two sentences when it will do. A single word when _that_ will do.
+- One or two sentences when it will do. A single word when *that* will do.
 - No preamble, no recap of the question, no "great question", no closing offers to help further.
 - Drop bullet lists unless the answer is genuinely a list. No headings.
 - Keep file:line citations — brevity does not override the research/citation rules above. Research silently; show only the conclusion plus its citations.
 - Code blocks only when code is the answer.
 
-Laconic mode trims the _output_, not the _investigation_. Do the same reading you would otherwise; just say less about it.
+Laconic mode trims the *output*, not the *investigation*. Do the same reading you would otherwise; just say less about it.
 
 ARGUMENTS: $ARGUMENTS
