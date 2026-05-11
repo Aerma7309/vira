@@ -60,7 +60,7 @@ import Vira.CI.Error (ConfigurationError (..), PipelineError (..), pipelineToolE
 import Vira.CI.Pipeline.Effect
 import Vira.CI.Pipeline.Process (runProcess)
 import Vira.CI.Pipeline.Signoff qualified as Signoff
-import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), Hooks (..), NixConfig (..), SignoffStage (..), ViraPipeline (..), allowedNixOptions, validateNixOptions)
+import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), Hooks (..), HooksConfig, NixConfig (..), SignoffStage (..), ViraPipeline (..), allowedNixOptions, validateNixOptions)
 import Vira.Environment.Tool.Tools.Attic qualified as AtticTool
 import Vira.Environment.Tool.Type.ToolData (status)
 import Vira.Environment.Tool.Type.Tools (attic)

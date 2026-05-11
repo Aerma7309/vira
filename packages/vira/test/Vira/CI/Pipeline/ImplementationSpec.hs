@@ -13,10 +13,9 @@ import System.Directory (removeFile)
 import System.Environment (setEnv, unsetEnv)
 import System.IO (hClose, openTempFile)
 import Test.Hspec
-import Vira.App.Type qualified as App (HooksConfig)
 import Vira.CI.Context (CIMode (..), ViraContext (..), repoNameFromCloneUrl)
 import Vira.CI.Pipeline.Implementation (defaultPipeline, hookEnvVars, runHook)
-import Vira.CI.Pipeline.Type (Hooks (..), ViraPipeline (..))
+import Vira.CI.Pipeline.Type (Hooks (..), HooksConfig, ViraPipeline (..))
 import Prelude hiding (id)
 
 -- | Sink that throws away anything written, for tests that don't inspect subprocess output.
@@ -71,17 +70,17 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
 
   describe "runHook" $ do
     it "returns Left when hook name not found in config" $ do
-      let emptyConfig = Map.empty :: App.HooksConfig
+      let emptyConfig = Map.empty :: HooksConfig
       result <- runHook emptyConfig "nonexistent" [] "/tmp" discardSink Nothing
       result `shouldBe` Left "Hook 'nonexistent' not found in operator configuration"
 
     it "returns Right () for successful hook command" $ do
-      let config = one ("success-hook", "true") :: App.HooksConfig
+      let config = one ("success-hook", "true") :: HooksConfig
       result <- runHook config "success-hook" [] "/tmp" discardSink Nothing
       result `shouldBe` Right ()
 
     it "returns Left with exit code for failing hook command" $ do
-      let config = one ("fail-hook", "false") :: App.HooksConfig
+      let config = one ("fail-hook", "false") :: HooksConfig
       result <- runHook config "fail-hook" [] "/tmp" discardSink Nothing
       result `shouldBe` Left "Hook command exited with code 1"
 
@@ -91,7 +90,7 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
       hClose tmpHandle
       let envVar = ("VIRA_BRANCH", "staging")
           hookCmd = "echo $VIRA_BRANCH > " <> toText tmpPath
-          config = one ("env-hook", hookCmd) :: App.HooksConfig
+          config = one ("env-hook", hookCmd) :: HooksConfig
       result <- runHook config "env-hook" [envVar] "/tmp" discardSink Nothing
       result `shouldBe` Right ()
       content <- readFileBS tmpPath
@@ -99,7 +98,7 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
       removeFile tmpPath
 
     it "times out when hook command runs longer than the limit" $ do
-      let config = one ("sleep-hook", "sleep 5") :: App.HooksConfig
+      let config = one ("sleep-hook", "sleep 5") :: HooksConfig
       result <- runHook config "sleep-hook" [] "/tmp" discardSink (Just 200_000) -- 0.2s
       case result of
         Left msg -> T.isInfixOf "timed out" msg `shouldBe` True
@@ -111,7 +110,7 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
       (tmpPath, tmpHandle) <- openTempFile "/tmp" "vira-hook-test"
       hClose tmpHandle
       let hookCmd = "echo $" <> toText varName <> " > " <> toText tmpPath
-          config = one ("override-hook", hookCmd) :: App.HooksConfig
+          config = one ("override-hook", hookCmd) :: HooksConfig
       ( do
           result <- runHook config "override-hook" [(toText varName, "from-hook")] "/tmp" discardSink Nothing
           result `shouldBe` Right ()

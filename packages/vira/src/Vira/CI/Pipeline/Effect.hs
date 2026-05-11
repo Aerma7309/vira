@@ -4,7 +4,6 @@
 
 module Vira.CI.Pipeline.Effect (
   module Vira.CI.Pipeline.Effect,
-  HooksConfig,
 ) where
 
 import Prelude hiding (asks)

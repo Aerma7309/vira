@@ -33,12 +33,12 @@ import Vira.App qualified as App
 import Vira.App.CLI (CLISettings (..), Command (..), GlobalSettings (..), WebSettings (..))
 import Vira.App.CLI qualified as CLI
 import Vira.App.InstanceInfo (InstanceInfo (..), getInstanceInfo, platform)
-import Vira.App.Type (HooksConfig)
 import Vira.CI.AutoBuild qualified as AutoBuild
 import Vira.CI.Cleanup.Daemon qualified as CleanupDaemon
 import Vira.CI.Context (CIMode (..), ViraContext (..))
 import Vira.CI.Pipeline qualified as Pipeline
 import Vira.CI.Pipeline.Program qualified as Program
+import Vira.CI.Pipeline.Type (HooksConfig)
 import Vira.CI.Worker qualified as Worker
 import Vira.CI.Worker.Type qualified as Worker
 import Vira.Environment.Tool.Core qualified as Tool

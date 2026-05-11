@@ -3,7 +3,6 @@
 -- | Core types for the Vira application
 module Vira.App.Type (
   ViraRuntimeState (..),
-  HooksConfig,
 ) where
 
 import Data.Acid (AcidState)
