@@ -368,10 +368,13 @@ runHook hooksConfig hookName envVars workDir =
    in case Map.lookup name hooksConfig of
         Nothing -> pure $ Left $ "Hook '" <> name <> "' not found in operator configuration"
         Just cmd -> do
-          -- Inherit the current environment and merge hook vars into it,
-          -- so that PATH (and other env) is available to the hook command.
+          -- VIRA_* values take precedence over any same-named inherited vars,
+          -- and Map.union deduplicates so execve receives a single value per key.
           currentEnv <- getEnvironment
-          let processEnv = map (bimap toString toString) envVars <> currentEnv
+          let processEnv =
+                Map.toList $
+                  Map.fromList (map (bimap toString toString) envVars)
+                    `Map.union` Map.fromList currentEnv
           let cp =
                 (proc "sh" ["-c", toString cmd])
                   { env = Just processEnv

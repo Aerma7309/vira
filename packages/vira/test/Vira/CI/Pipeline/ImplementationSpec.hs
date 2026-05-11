@@ -3,10 +3,12 @@
 
 module Vira.CI.Pipeline.ImplementationSpec (spec) where
 
+import Control.Exception (finally)
 import Data.List (lookup)
 import Data.Map qualified as Map (empty)
 import Effectful.Git (BranchName (..), CommitID (..))
 import System.Directory (removeFile)
+import System.Environment (setEnv, unsetEnv)
 import System.IO (hClose, openTempFile)
 import Test.Hspec
 import Vira.App.Type qualified as App (HooksConfig)
@@ -89,6 +91,21 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
       content <- readFileBS tmpPath
       decodeUtf8 content `shouldContain` "staging"
       removeFile tmpPath
+
+    it "hook envVars override the inherited environment" $ do
+      let varName = "VIRA_TEST_PARENT_OVERRIDE_XYZ"
+      setEnv varName "from-parent"
+      (tmpPath, tmpHandle) <- openTempFile "/tmp" "vira-hook-test"
+      hClose tmpHandle
+      let hookCmd = "echo $" <> toText varName <> " > " <> toText tmpPath
+          config = one ("override-hook", hookCmd) :: App.HooksConfig
+      ( do
+          result <- runHook config "override-hook" [(toText varName, "from-hook")] "/tmp"
+          result `shouldBe` Right ()
+          content <- readFileBS tmpPath
+          decodeUtf8 content `shouldContain` "from-hook"
+        )
+        `finally` (removeFile tmpPath >> unsetEnv varName)
 
   describe "defaultPipeline" $ do
     it "has no onSuccess hook by default" $ do
