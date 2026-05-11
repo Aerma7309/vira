@@ -1,6 +1,11 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+-- @id@ from "Prelude" is hidden by the @Commit (id)@ import,
+-- so passing the identity function inline requires a lambda.
+{-# HLINT ignore "Use id" #-}
 
 module Vira.CI.Pipeline.Implementation (
   runPipeline,
@@ -19,6 +24,8 @@ import Attic.Types (AtticServer (..), AtticServerEndpoint)
 import Attic.Url qualified
 import Colog (Severity (..))
 import Colog.Message (RichMessage)
+import Control.Concurrent.Async (wait, withAsync)
+import Control.Exception qualified as CE
 import Data.Aeson (eitherDecodeFileStrict)
 import Data.Map qualified as Map
 import DevourFlake (DevourFlakeArgs (..), devourFlake, prefetchFlakeInputs)
@@ -36,6 +43,8 @@ import Effectful.Git.Platform (detectPlatform)
 import Effectful.Git.Types (Commit (id))
 import Effectful.Process (Process)
 import Effectful.Reader.Static qualified as ER
+import LogSink (Sink (..))
+import LogSink.Handle (drainHandleWith)
 import Prettyprinter
 import Prettyprinter.Render.Text (renderStrict)
 import System.Environment (getEnvironment)
@@ -43,7 +52,8 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Nix.Core (nix)
 import System.Nix.System (System (..))
-import System.Process (CreateProcess (..), proc, waitForProcess, withCreateProcess)
+import System.Process (CreateProcess (..), StdStream (CreatePipe), interruptProcessGroupOf, proc, waitForProcess, withCreateProcess)
+import System.Timeout qualified as Timeout
 import Vira.CI.Configuration qualified as Configuration
 import Vira.CI.Context (CIMode (..), ViraContext (..), repoNameFromCloneUrl)
 import Vira.CI.Error (ConfigurationError (..), PipelineError (..), pipelineToolError)
@@ -361,29 +371,72 @@ hookEnvVars ctx =
   ]
     <> maybe [] (\name -> [("VIRA_REPO", name)]) (repoNameFromCloneUrl ctx.cloneUrl)
 
--- | Execute a named hook command with environment variables
-runHook :: HooksConfig -> HookName -> [(Text, Text)] -> FilePath -> IO (Either Text ())
-runHook hooksConfig hookName envVars workDir =
+{- | Execute a named hook command with environment variables.
+
+Subprocess stdout/stderr are streamed line by line to @sink@. The hook
+is killed (process group) if it runs longer than @timeoutMicros@.
+Returns @Left@ with a diagnostic when the hook is missing, exits
+non-zero, or times out.
+-}
+runHook ::
+  HooksConfig ->
+  -- | Hook name
+  HookName ->
+  -- | Environment variables to set; override any same-named inherited vars
+  [(Text, Text)] ->
+  -- | Working directory
+  FilePath ->
+  -- | Sink for subprocess output
+  Sink Text ->
+  -- | Timeout in microseconds; 'Nothing' disables the timeout
+  Maybe Int ->
+  IO (Either Text ())
+runHook hooksConfig hookName envVars workDir sink mTimeoutMicros =
   let name = hookNameText hookName
    in case Map.lookup name hooksConfig of
         Nothing -> pure $ Left $ "Hook '" <> name <> "' not found in operator configuration"
-        Just cmd -> do
-          -- VIRA_* values take precedence over any same-named inherited vars,
-          -- and Map.union deduplicates so execve receives a single value per key.
-          currentEnv <- getEnvironment
-          let processEnv =
-                Map.toList $
-                  Map.fromList (map (bimap toString toString) envVars)
-                    `Map.union` Map.fromList currentEnv
-          let cp =
-                (proc "sh" ["-c", toString cmd])
-                  { env = Just processEnv
-                  , cwd = Just workDir
-                  }
-          exitCode <- withCreateProcess cp $ \_ _ _ ph -> waitForProcess ph
-          case exitCode of
-            ExitSuccess -> pure $ Right ()
-            ExitFailure code -> pure $ Left $ "Hook command exited with code " <> show code
+        Just cmd -> doRun cmd
+  where
+    doRun cmd = do
+      -- VIRA_* values take precedence over any same-named inherited vars,
+      -- and Map.union deduplicates so execve receives a single value per key.
+      currentEnv <- getEnvironment
+      let processEnv =
+            Map.toList $
+              Map.fromList (map (bimap toString toString) envVars)
+                `Map.union` Map.fromList currentEnv
+          cp =
+            (proc "sh" ["-c", toString cmd])
+              { env = Just processEnv
+              , cwd = Just workDir
+              , std_out = CreatePipe
+              , std_err = CreatePipe
+              , create_group = True
+              }
+      withCreateProcess cp $ \_ mStdoutH mStderrH ph -> do
+        let stdoutH = fromMaybe (error "Expected stdout handle") mStdoutH
+            stderrH = fromMaybe (error "Expected stderr handle") mStderrH
+        withAsync (drainHandleWith (\x -> x) stdoutH sink) $ \stdoutAsync ->
+          withAsync (drainHandleWith (\x -> x) stderrH sink) $ \stderrAsync -> do
+            mExit <- case mTimeoutMicros of
+              Nothing -> Just <$> waitForProcess ph
+              Just t -> Timeout.timeout t (waitForProcess ph)
+            case mExit of
+              Nothing -> do
+                interruptProcessGroupOf ph `CE.catch` \(_ :: SomeException) -> pass
+                _ <- waitForProcess ph
+                wait stdoutAsync
+                wait stderrAsync
+                let secs = maybe 0 (`div` 1_000_000) mTimeoutMicros
+                pure $ Left $ "Hook command timed out after " <> show secs <> "s"
+              Just ExitSuccess -> do
+                wait stdoutAsync
+                wait stderrAsync
+                pure $ Right ()
+              Just (ExitFailure code) -> do
+                wait stdoutAsync
+                wait stderrAsync
+                pure $ Left $ "Hook command exited with code " <> show code
 
 -- | Implementation: Execute post-build hooks
 postBuildImpl ::
@@ -418,7 +471,7 @@ executeHook env hookName = do
       envVars = hookEnvVars ctx
       name = hookNameText hookName
   logPipeline Info $ "Running post-build hook: " <> name
-  result <- liftIO $ runHook env.availableHooks hookName envVars ctx.repoDir
+  result <- liftIO $ runHook env.availableHooks hookName envVars ctx.repoDir env.logSink (Just hookTimeoutMicros)
   case result of
     Left err ->
       throwError $
@@ -427,6 +480,10 @@ executeHook env hookName = do
           (Nothing :: Maybe Text)
     Right () ->
       logPipeline Info $ "Post-build hook '" <> name <> "' succeeded"
+
+-- | Maximum hook runtime before vira kills the subprocess (5 minutes).
+hookTimeoutMicros :: Int
+hookTimeoutMicros = 300 * 1_000_000
 
 -- | Default pipeline configuration
 defaultPipeline :: ViraPipeline
