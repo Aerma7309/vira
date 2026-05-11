@@ -60,7 +60,7 @@ import Vira.CI.Error (ConfigurationError (..), PipelineError (..), pipelineToolE
 import Vira.CI.Pipeline.Effect
 import Vira.CI.Pipeline.Process (runProcess)
 import Vira.CI.Pipeline.Signoff qualified as Signoff
-import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), HookName, Hooks (..), NixConfig (..), SignoffStage (..), ViraPipeline (..), allowedNixOptions, hookNameText, validateNixOptions)
+import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), Hooks (..), NixConfig (..), SignoffStage (..), ViraPipeline (..), allowedNixOptions, validateNixOptions)
 import Vira.Environment.Tool.Tools.Attic qualified as AtticTool
 import Vira.Environment.Tool.Type.ToolData (status)
 import Vira.Environment.Tool.Type.Tools (attic)
@@ -379,7 +379,7 @@ non-zero, or times out.
 runHook ::
   HooksConfig ->
   -- | Hook name
-  HookName ->
+  Text ->
   -- | Environment variables to set; override any same-named inherited vars
   [(Text, Text)] ->
   -- | Working directory
@@ -390,10 +390,9 @@ runHook ::
   Maybe Int ->
   IO (Either Text ())
 runHook hooksConfig hookName envVars workDir sink mTimeoutMicros =
-  let name = hookNameText hookName
-   in case Map.lookup name hooksConfig of
-        Nothing -> pure $ Left $ "Hook '" <> name <> "' not found in operator configuration"
-        Just cmd -> doRun cmd
+  case Map.lookup hookName hooksConfig of
+    Nothing -> pure $ Left $ "Hook '" <> hookName <> "' not found in operator configuration"
+    Just cmd -> doRun cmd
   where
     doRun cmd = do
       -- VIRA_* values take precedence over any same-named inherited vars,
@@ -462,22 +461,21 @@ executeHook ::
   , Error PipelineError :> es
   ) =>
   PipelineEnv ->
-  HookName ->
+  Text ->
   Eff es ()
 executeHook env hookName = do
   let ctx = env.viraContext
       envVars = hookEnvVars ctx
-      name = hookNameText hookName
-  logPipeline Info $ "Running post-build hook: " <> name
+  logPipeline Info $ "Running post-build hook: " <> hookName
   result <- liftIO $ runHook env.availableHooks hookName envVars ctx.repoDir env.logSink (Just hookTimeoutMicros)
   case result of
     Left err ->
       throwError $
         pipelineToolError
-          ("Post-build hook '" <> name <> "' failed: " <> err)
+          ("Post-build hook '" <> hookName <> "' failed: " <> err)
           (Nothing :: Maybe Text)
     Right () ->
-      logPipeline Info $ "Post-build hook '" <> name <> "' succeeded"
+      logPipeline Info $ "Post-build hook '" <> hookName <> "' succeeded"
 
 -- | Maximum hook runtime before vira kills the subprocess (5 minutes).
 hookTimeoutMicros :: Int

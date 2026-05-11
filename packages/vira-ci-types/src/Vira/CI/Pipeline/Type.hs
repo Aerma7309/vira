@@ -18,7 +18,7 @@ module Vira.CI.Pipeline.Type where
 
 import Data.String (IsString (..))
 import GHC.Records.Compat
-import Relude (Bool (..), Eq (..), FilePath, Generic, Map, Maybe (..), NonEmpty, Show, Text, notElem)
+import Relude (Bool (..), FilePath, Generic, Map, Maybe (..), NonEmpty, Show, Text, notElem)
 import System.Nix.System (System)
 
 -- | CI Pipeline configuration types
@@ -93,19 +93,6 @@ newtype CacheStage = CacheStage
   }
   deriving stock (Generic, Show)
 
-{- | Name of a hook registered by the operator
-
-Future: either encode an invariant (e.g. non-empty, no spaces) or delete
-the newtype and use Text directly.
--}
-newtype HookName = HookName Text
-  deriving stock (Generic, Show, Eq)
-  deriving newtype (IsString)
-
--- | Unwrap a 'HookName' to its underlying 'Text'
-hookNameText :: HookName -> Text
-hookNameText (HookName t) = t
-
 -- | Map of hook names to their shell commands (operator configuration)
 type HooksConfig = Map Text Text
 
@@ -133,13 +120,8 @@ Environment variables passed to hooks (derived from ViraContext):
   - VIRA_COMMIT_ID
 -}
 newtype Hooks = Hooks
-  { onSuccess :: Maybe HookName
-  {- ^ Hook to run after a successful pipeline run
-
-  Volatility axis: trigger condition. Currently only 'onSuccess' exists.
-  When 'onFailure' or 'onAlways' are added, this single-field record will
-  become a multi-field record — restructure then.
-  -}
+  { onSuccess :: Maybe Text
+  -- ^ Hook to run after a successful pipeline run
   }
   deriving stock (Generic, Show)
 
@@ -168,7 +150,7 @@ instance HasField "enable" SignoffStage Bool where
 instance HasField "url" CacheStage (Maybe Text) where
   hasField (CacheStage url) = (CacheStage, url)
 
-instance HasField "onSuccess" Hooks (Maybe HookName) where
+instance HasField "onSuccess" Hooks (Maybe Text) where
   hasField (Hooks onSuccess) = (Hooks, onSuccess)
 
 instance HasField "build" ViraPipeline BuildStage where
