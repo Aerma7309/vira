@@ -111,7 +111,7 @@ data Pipeline :: Effect where
   -- | Create GitHub/Bitbucket commit signoff (one per system)
   Signoff :: ViraPipeline -> NonEmpty BuildResult -> Pipeline m ()
   -- | Execute configured post-build hooks
-  PostBuild :: ViraPipeline -> NonEmpty BuildResult -> Pipeline m ()
+  PostBuild :: ViraPipeline -> Pipeline m ()
 
 -- Generate boilerplate for the effect
 makeEffect ''Pipeline

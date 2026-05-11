@@ -88,7 +88,7 @@ pipelineProgram = do
   -- Skipped in BuildOnly mode where side effects are disabled.
   env <- ER.ask @PipelineEnv
   when (env.viraContext.ciMode /= BuildOnly) $
-    postBuild pipeline buildResults
+    postBuild pipeline
   logPipeline Info "Pipeline completed successfully"
 
 {- | Pipeline program with clone (for web/CI)
