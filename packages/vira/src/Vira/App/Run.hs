@@ -11,9 +11,8 @@ import Control.Exception (bracket, throwTo)
 
 import Data.Acid (AcidState)
 import Data.Acid.Events qualified as Event
-import Data.Aeson (decode, encode)
+import Data.Aeson (encode)
 import Data.ByteString.Lazy qualified as LBS
-import Data.Map.Strict qualified as Map
 import Data.Time (getCurrentTime)
 import Data.Version (showVersion)
 import Effectful (runEff)
@@ -65,16 +64,6 @@ withTerminationHandler termException action = do
   _ <- installHandler sigINT oldHandler Nothing
   pure result
 
--- | Parse a --hooks JSON argument into a HooksConfig map
-parseHooksConfig :: Maybe Text -> IO HooksConfig
-parseHooksConfig Nothing = pure Map.empty
-parseHooksConfig (Just jsonText) =
-  case decode $ encodeUtf8 jsonText of
-    Nothing -> do
-      putTextLn "Error: Invalid --hooks JSON"
-      exitFailure
-    Just h -> pure h
-
 -- | Run the Vira application
 runVira :: IO ()
 runVira = do
@@ -90,7 +79,7 @@ runVira = do
         ExportCommand -> runExport globalSettings
         ImportCommand -> runImport globalSettings
         InfoCommand -> runInfo
-        CICommand mDir ciMode hooksJson -> runCI globalSettings mDir ciMode hooksJson
+        CICommand mDir ciMode hooks -> runCI globalSettings mDir ciMode hooks
 
     runWebServer :: GlobalSettings -> WebSettings -> IO ()
     runWebServer globalSettings webSettings = do
@@ -99,8 +88,7 @@ runVira = do
         whenJust (importFile webSettings) $ \filePath -> do
           importFromFileOrStdin acid (Just filePath)
 
-        -- Parse hooks JSON if provided
-        hooks <- parseHooksConfig (hooksJson webSettings)
+        let hooks = webSettings.hooks
 
         startTime <- getCurrentTime
         instanceInfo <- getInstanceInfo
@@ -152,11 +140,9 @@ runVira = do
       putTextLn $ "Platform: " <> platform instanceInfo
       putTextLn $ "Schema version: " <> show viraDbVersion
 
-    runCI :: GlobalSettings -> Maybe FilePath -> CIMode -> Maybe Text -> IO ()
-    runCI gs mDir ciMode hooksJsonArg = do
+    runCI :: GlobalSettings -> Maybe FilePath -> CIMode -> HooksConfig -> IO ()
+    runCI gs mDir ciMode hooks = do
       dir <- maybe getCurrentDirectory makeAbsolute mDir
-      -- Parse hooks JSON if provided
-      hooks <- parseHooksConfig hooksJsonArg
       -- Throw Terminated on Ctrl+C so Process.hs cleanup logic can terminate nix processes
       exitCode <- withTerminationHandler Terminated $ App.runAppCLI gs $ do
         result <- runErrorNoCallStack @Text $ do

@@ -14,7 +14,9 @@ module Vira.App.CLI (
 ) where
 
 import Colog.Core (Severity (..))
+import Data.Aeson qualified as Aeson
 import Data.Char (toLower)
+import Data.Map.Strict qualified as Map
 import Data.Version (showVersion)
 import Network.Wai.Handler.Warp (Port)
 import Network.Wai.Handler.WarpTLS.Simple (TLSConfig, tlsConfigParser)
@@ -23,6 +25,7 @@ import Options.Applicative qualified as OA
 import Paths_vira qualified
 import Vira.CI.AutoBuild.Type (AutoBuildNewBranches (..))
 import Vira.CI.Context (CIMode (..))
+import Vira.CI.Pipeline.Type (HooksConfig)
 import Prelude hiding (Reader, reader, runReader)
 
 -- | Global CLI Settings
@@ -61,8 +64,8 @@ data WebSettings = WebSettings
   -- ^ Optional JSON file to import on startup
   , ciSettings :: CISettings
   -- ^ CI configuration settings
-  , hooksJson :: Maybe Text
-  -- ^ Optional JSON string mapping hook names to shell commands
+  , hooks :: HooksConfig
+  -- ^ Operator-defined hook commands (parsed from @--hooks@). Empty when not provided.
   }
   deriving stock (Show)
 
@@ -72,7 +75,7 @@ data Command
   | ExportCommand
   | ImportCommand
   | InfoCommand
-  | CICommand (Maybe FilePath) CIMode (Maybe Text)
+  | CICommand (Maybe FilePath) CIMode HooksConfig
   deriving stock (Show)
 
 -- | Complete CLI configuration
@@ -118,6 +121,26 @@ severityReader = eitherReader $ \s -> case map toLower s of
   "warn" -> Right Warning -- Allow both variants
   "error" -> Right Error
   _ -> Left "Invalid log level. Choose from: Debug, Info, Warning, Error"
+
+{- | Parser for the @--hooks@ flag.
+
+The value is a JSON object mapping hook names to shell commands. The JSON
+is parsed at parse time so downstream code never sees the raw string.
+Defaults to an empty map when the flag is absent.
+-}
+hooksOption :: Parser HooksConfig
+hooksOption =
+  option hooksReader $
+    long "hooks"
+      <> metavar "JSON"
+      <> help "JSON object mapping hook names to shell commands, e.g. '{\"notify\":\"curl ...\"}'"
+      <> value Map.empty
+  where
+    hooksReader :: ReadM HooksConfig
+    hooksReader = eitherReader $ \s ->
+      case Aeson.eitherDecodeStrict (encodeUtf8 (toText s)) of
+        Left err -> Left $ "Invalid --hooks JSON: " <> err
+        Right h -> Right h
 
 -- | Parser for web settings
 webSettingsParser :: Parser WebSettings
@@ -177,13 +200,7 @@ webSettingsParser = do
           <> value 14
           <> showDefault
       )
-  hooksJson <-
-    optional $
-      strOption
-        ( long "hooks"
-            <> metavar "JSON"
-            <> help "JSON string mapping hook names to shell commands, e.g. '{\"notify\":\"curl ...\"}'"
-        )
+  hooks <- hooksOption
   pure
     WebSettings
       { port
@@ -197,7 +214,7 @@ webSettingsParser = do
             , autoBuildNewBranches = AutoBuildNewBranches autoBuildNewBranchesBool
             , jobRetentionDays
             }
-      , hooksJson
+      , hooks
       }
 
 -- | Parser for CI command
@@ -214,13 +231,7 @@ ciCommandParser =
             <|> flag' LocalBuild (long "local" <> short 'l' <> help "Build only for the current system")
             <|> pure FullBuild
         )
-    <*> optional
-      ( strOption
-          ( long "hooks"
-              <> metavar "JSON"
-              <> help "JSON string mapping hook names to shell commands, e.g. '{\"notify\":\"curl ...\"}'"
-          )
-      )
+    <*> hooksOption
 
 -- | Parser for commands
 commandParser :: Parser Command
