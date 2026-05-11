@@ -179,7 +179,7 @@ in
                 ++ optionals (cfg.maxConcurrentBuilds != null) [ "--max-concurrent-builds" (toString cfg.maxConcurrentBuilds) ]
                 ++ optionals cfg.autoBuildNewBranches [ "--auto-build-new-branches" ]
                 ++ [ "--job-retention-days" (toString cfg.jobRetentionDays) ]
-                ++ optionals (cfg.hooks != { }) [ "--hooks" (builtins.toJSON cfg.hooks) ];
+                ++ optionals (cfg.hooks != { }) [ "--hooks" (lib.escapeShellArg (builtins.toJSON cfg.hooks)) ];
               in
               "${cfg.package}/bin/vira ${concatStringsSep " " globalArgs} web ${concatStringsSep " " webArgs}";
           };
