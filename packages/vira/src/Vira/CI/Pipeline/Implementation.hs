@@ -164,8 +164,6 @@ loadConfigImpl = do
           { signoff = pipeline.signoff {enable = False}
           , cache = CacheStage {url = Nothing}
           , build = BuildStage {flakes = pipeline.build.flakes, systems = []}
-          , -- Don't run hooks when only building (hooks are side effects)
-            hooks = Hooks {onSuccess = Nothing}
           }
 
 -- | Implementation: Build flakes
