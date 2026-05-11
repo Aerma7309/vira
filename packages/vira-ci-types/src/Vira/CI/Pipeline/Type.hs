@@ -11,8 +11,6 @@
 {-# HLINT ignore "Avoid lambda using `infix`" #-}
 {-# HLINT ignore "Avoid lambda" #-}
 {-# HLINT ignore "Use 'fromString' from Relude" #-}
-{-# HLINT ignore "Use toText" #-}
-{-# HLINT ignore "Use alternative" #-}
 
 module Vira.CI.Pipeline.Type where
 
