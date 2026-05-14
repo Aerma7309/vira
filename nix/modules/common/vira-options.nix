@@ -99,19 +99,31 @@ in
         Shell script body to run after every successful CI pipeline.
 
         When non-null, vira executes this script with
-        <literal>VIRA_REPO</literal>, <literal>VIRA_BRANCH</literal>, and
-        <literal>VIRA_COMMIT_ID</literal> exported in the environment. The
-        script is the operator's integration point — branch on those values
-        to dispatch to Jenkins, Slack, or anything else.
+        <literal>VIRA_BRANCH</literal>, <literal>VIRA_COMMIT_ID</literal>,
+        and <literal>VIRA_REPO_CLONE_URL</literal> exported in the
+        environment. The script is the operator's integration point —
+        match on the clone URL for exact per-repo dispatch (short names
+        can collide across orgs), then branch on the branch name.
 
         Example:
         <programlisting language="nix">
         services.vira.postBuildHook = '''
-          case "$VIRA_REPO" in
-            my-service)
-              curl -fsS --retry 3 -X POST \
-                -u "$JENKINS_USER:$JENKINS_TOKEN" \
-                "https://jenkins.office/job/$VIRA_REPO-integration/buildWithParameters?BRANCH=$VIRA_BRANCH"
+          short_sha="''${VIRA_COMMIT_ID:0:7}"
+          case "$VIRA_REPO_CLONE_URL" in
+            https://github.com/juspay/vira.git|git@github.com:juspay/vira.git)
+              case "$VIRA_BRANCH" in
+                main)
+                  curl -fsS --retry 3 -X POST \
+                    -u "$JENKINS_USER:$JENKINS_TOKEN" \
+                    "https://jenkins.office/job/vira-integration/buildWithParameters?BRANCH=$VIRA_BRANCH&COMMIT=$VIRA_COMMIT_ID"
+                  ;;
+                release-*)
+                  curl -fsS -X POST \
+                    -H "Content-Type: application/json" \
+                    -d "{\"text\": \":rocket: vira@$VIRA_BRANCH ($short_sha) shipped\"}" \
+                    "$SLACK_WEBHOOK_URL"
+                  ;;
+              esac
               ;;
           esac
         ''';
@@ -119,7 +131,7 @@ in
       '';
       example = literalExpression ''
         '''
-          echo "Build succeeded: $VIRA_REPO@$VIRA_BRANCH" | slack-notify
+          echo "Build succeeded: $VIRA_REPO_CLONE_URL@$VIRA_BRANCH (''${VIRA_COMMIT_ID:0:7})" | slack-notify
         '''
       '';
     };

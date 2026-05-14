@@ -11,7 +11,7 @@ import System.Environment (setEnv, unsetEnv)
 import System.IO (hClose, openTempFile)
 import System.Posix.Files (ownerExecuteMode, ownerReadMode, ownerWriteMode, setFileMode, unionFileModes)
 import Test.Hspec
-import Vira.CI.Context (CIMode (..), ViraContext (..), repoNameFromCloneUrl)
+import Vira.CI.Context (CIMode (..), ViraContext (..))
 import Vira.CI.Pipeline.Implementation (HookError (..), hookEnvVars, runHook)
 import Prelude hiding (id)
 
@@ -50,29 +50,13 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
       let vars = hookEnvVars testContext
       lookup "VIRA_COMMIT_ID" vars `shouldBe` Just "deadbeef"
 
-    it "sets VIRA_REPO derived from cloneUrl" $ do
+    it "sets VIRA_REPO_CLONE_URL to the raw clone URL" $ do
       let vars = hookEnvVars testContext
-      lookup "VIRA_REPO" vars `shouldBe` Just "test-repo"
+      lookup "VIRA_REPO_CLONE_URL" vars `shouldBe` Just "https://example.com/test-repo.git"
 
-    it "omits VIRA_REPO when cloneUrl is absent" $ do
+    it "omits VIRA_REPO_CLONE_URL when cloneUrl is absent" $ do
       let vars = hookEnvVars testContext {cloneUrl = Nothing}
-      lookup "VIRA_REPO" vars `shouldBe` Nothing
-
-  describe "repoNameFromCloneUrl" $ do
-    it "returns Nothing for Nothing" $ do
-      repoNameFromCloneUrl Nothing `shouldBe` Nothing
-
-    it "strips .git suffix from HTTPS URL" $ do
-      repoNameFromCloneUrl (Just "https://example.com/test-repo.git") `shouldBe` Just "test-repo"
-
-    it "returns last path component when no .git suffix" $ do
-      repoNameFromCloneUrl (Just "https://example.com/my-project") `shouldBe` Just "my-project"
-
-    it "handles SSH URL format" $ do
-      repoNameFromCloneUrl (Just "git@github.com:user/vira.git") `shouldBe` Just "vira"
-
-    it "returns Nothing for edge case of only .git" $ do
-      repoNameFromCloneUrl (Just "https://example.com/.git") `shouldBe` Nothing
+      lookup "VIRA_REPO_CLONE_URL" vars `shouldBe` Nothing
 
   describe "runHook" $ do
     it "returns Right () for a successful script" $ do

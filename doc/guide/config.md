@@ -133,7 +133,7 @@ Enables commit status reporting to GitHub or Bitbucket. When enabled, Vira posts
 - For Bitbucket, uses Bitbucket API with token from `bb` CLI.
 
 > [!NOTE]
-> Post-build hooks (e.g. Jenkins / Slack notifications) are configured by the CI operator, not in `vira.hs`. See `services.vira.postBuildHook` in the NixOS / home-manager module, or pass `--post-build-hook PATH` to `vira ci`. The script receives `VIRA_REPO`, `VIRA_BRANCH`, and `VIRA_COMMIT_ID` in the environment and branches internally.
+> Post-build hooks (e.g. Jenkins / Slack notifications) are configured by the CI operator, not in `vira.hs`. See `services.vira.postBuildHook` in the NixOS / home-manager module, or pass `--post-build-hook PATH` to `vira ci`. The script receives `VIRA_BRANCH`, `VIRA_COMMIT_ID`, and `VIRA_REPO_CLONE_URL` in the environment and dispatches by matching on the clone URL.
 
 ## Conditional Configuration {#cond}
 

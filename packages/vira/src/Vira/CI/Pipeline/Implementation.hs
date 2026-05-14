@@ -52,7 +52,7 @@ import System.Nix.System (System (..))
 import System.Process (CreateProcess (..), StdStream (CreatePipe), interruptProcessGroupOf, proc, waitForProcess, withCreateProcess)
 import System.Timeout qualified as Timeout
 import Vira.CI.Configuration qualified as Configuration
-import Vira.CI.Context (CIMode (..), ViraContext (..), repoNameFromCloneUrl)
+import Vira.CI.Context (CIMode (..), ViraContext (..))
 import Vira.CI.Error (ConfigurationError (..), PipelineError (..), pipelineToolError)
 import Vira.CI.Pipeline.Effect
 import Vira.CI.Pipeline.Process (runProcess)
@@ -358,13 +358,19 @@ signoffImpl pipeline buildResults = do
     else
       logPipeline Warning "Signoff disabled, skipping"
 
--- | Environment variables passed to hooks (only values from ViraContext or derived from it)
+{- | Environment variables passed to hooks.
+
+Always emits @VIRA_BRANCH@ and @VIRA_COMMIT_ID@. Emits
+@VIRA_REPO_CLONE_URL@ (the full clone URL) when an origin remote is
+configured — operator scripts dispatch on this exact value to avoid
+short-name collisions across orgs.
+-}
 hookEnvVars :: ViraContext -> [(Text, Text)]
 hookEnvVars ctx =
   [ ("VIRA_BRANCH", toText ctx.branch)
   , ("VIRA_COMMIT_ID", toText ctx.commitId)
   ]
-    <> maybe [] (\name -> [("VIRA_REPO", name)]) (repoNameFromCloneUrl ctx.cloneUrl)
+    <> maybe [] (\url -> [("VIRA_REPO_CLONE_URL", url)]) ctx.cloneUrl
 
 -- | Failure modes for 'runHook'.
 data HookError
