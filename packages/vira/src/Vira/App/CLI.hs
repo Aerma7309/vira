@@ -7,6 +7,7 @@ module Vira.App.CLI (
   GlobalSettings (..),
   WebSettings (..),
   CISettings (..),
+  OperatorHookSettings (..),
   Command (..),
 
   -- * Functions
@@ -48,6 +49,18 @@ data CISettings = CISettings
   }
   deriving stock (Show)
 
+{- | Operator-side integration hooks.
+
+Distinct from 'CISettings' (capacity / scheduling policy) and from the
+HTTP transport settings on 'WebSettings': these are choices about how
+vira talks to other systems on the operator's behalf.
+-}
+newtype OperatorHookSettings = OperatorHookSettings
+  { postBuildHook :: Maybe PostBuildHook
+  -- ^ Script run after each successful pipeline (parsed from @--post-build-hook@).
+  }
+  deriving stock (Show)
+
 -- | Web server settings
 data WebSettings = WebSettings
   { port :: Port
@@ -62,8 +75,8 @@ data WebSettings = WebSettings
   -- ^ Optional JSON file to import on startup
   , ciSettings :: CISettings
   -- ^ CI configuration settings
-  , postBuildHook :: Maybe PostBuildHook
-  -- ^ Operator-configured script to run after a successful pipeline (parsed from @--post-build-hook@).
+  , hookSettings :: OperatorHookSettings
+  -- ^ Operator-defined integration hooks
   }
   deriving stock (Show)
 
@@ -208,7 +221,7 @@ webSettingsParser = do
             , autoBuildNewBranches = AutoBuildNewBranches autoBuildNewBranchesBool
             , jobRetentionDays
             }
-      , postBuildHook
+      , hookSettings = OperatorHookSettings {postBuildHook}
       }
 
 -- | Parser for CI command

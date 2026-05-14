@@ -88,7 +88,7 @@ runVira = do
         whenJust (importFile webSettings) $ \filePath -> do
           importFromFileOrStdin acid (Just filePath)
 
-        let postBuildHook = webSettings.postBuildHook
+        let postBuildHook = webSettings.hookSettings.postBuildHook
 
         startTime <- getCurrentTime
         instanceInfo <- getInstanceInfo
