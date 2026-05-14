@@ -12,7 +12,6 @@ import Servant.Links (Link)
 import System.Nix.Cache.Keys (PublicKey)
 import Vira.App.InstanceInfo (InstanceInfo)
 import Vira.CI.AutoBuild.Type (AutoBuildSettings)
-import Vira.CI.Pipeline.Effect (PostBuildHook)
 import Vira.CI.Worker.Type (JobWorkerState)
 import Vira.Environment.Tool.Type.Tools (Tools)
 import Vira.Refresh.Type (RefreshState)
@@ -47,6 +46,6 @@ data ViraRuntimeState = ViraRuntimeState
   -- ^ Server start time for uptime tracking
   , cachePublicKey :: PublicKey
   -- ^ Cache 'PublicKey' (for UI display)
-  , postBuildHook :: Maybe PostBuildHook
-  -- ^ Operator-configured script run after a successful pipeline. 'Nothing' disables post-build hooks.
+  , postBuildHook :: Maybe FilePath
+  -- ^ Operator-configured script path run after a successful pipeline. 'Nothing' disables post-build hooks.
   }

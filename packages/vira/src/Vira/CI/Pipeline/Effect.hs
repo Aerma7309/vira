@@ -22,17 +22,6 @@ import Vira.CI.Pipeline.Type (ViraPipeline)
 import Vira.Environment.Tool.Type.Tools (Tools)
 import Vira.State.Type (Branch (..), Repo)
 
-{- | Path to an operator-configured shell script to run after a successful
-pipeline. The wrapped 'FilePath' is opaque to vira beyond being something
-@System.Process.proc@ can exec; the operator owns the script's contents.
--}
-newtype PostBuildHook = PostBuildHook FilePath
-  deriving stock (Show, Eq, Generic)
-
--- | Recover the underlying filesystem path of a 'PostBuildHook'.
-postBuildHookPath :: PostBuildHook -> FilePath
-postBuildHookPath (PostBuildHook p) = p
-
 -- | Environment for 'Pipeline' execution
 data PipelineEnv = PipelineEnv
   { outputLog :: Maybe FilePath
@@ -45,8 +34,8 @@ data PipelineEnv = PipelineEnv
   -- ^ 'LogSink.Sink' for all output (ViraLog JSON + subprocess raw output)
   , excludeContextKeys :: [Text]
   -- ^ Context keys to exclude from log entries (repo/branch/job already in file path)
-  , postBuildHook :: Maybe PostBuildHook
-  -- ^ Operator-configured script to run after a successful pipeline. 'Nothing' disables post-build hooks.
+  , postBuildHook :: Maybe FilePath
+  -- ^ Path to an operator-configured shell script to run after a successful pipeline. 'Nothing' disables post-build hooks.
   }
   deriving stock (Generic)
 
@@ -127,7 +116,7 @@ data Pipeline :: Effect where
 makeEffect ''Pipeline
 
 -- | Construct PipelineEnv for web/CI execution (with output log and sink)
-pipelineEnvFromRemote :: Maybe PostBuildHook -> Tools -> Sink Text -> [Text] -> ViraContext -> PipelineEnv
+pipelineEnvFromRemote :: Maybe FilePath -> Tools -> Sink Text -> [Text] -> ViraContext -> PipelineEnv
 pipelineEnvFromRemote postBuildHook tools sink excludeKeys ctx =
   PipelineEnv
     { outputLog = Just $ ctx.repoDir </> "output.log"
@@ -139,7 +128,7 @@ pipelineEnvFromRemote postBuildHook tools sink excludeKeys ctx =
     }
 
 -- | Construct PipelineEnv for CLI execution (stdout sink with severity filtering)
-pipelineEnvFromCLI :: Maybe PostBuildHook -> Severity -> [Text] -> Tools -> ViraContext -> PipelineEnv
+pipelineEnvFromCLI :: Maybe FilePath -> Severity -> [Text] -> Tools -> ViraContext -> PipelineEnv
 pipelineEnvFromCLI postBuildHook minSeverity excludeKeys tools ctx =
   PipelineEnv
     { outputLog = Nothing

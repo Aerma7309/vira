@@ -7,7 +7,6 @@ module Vira.App.CLI (
   GlobalSettings (..),
   WebSettings (..),
   CISettings (..),
-  OperatorHookSettings (..),
   Command (..),
 
   -- * Functions
@@ -24,7 +23,6 @@ import Options.Applicative qualified as OA
 import Paths_vira qualified
 import Vira.CI.AutoBuild.Type (AutoBuildNewBranches (..))
 import Vira.CI.Context (CIMode (..))
-import Vira.CI.Pipeline.Effect (PostBuildHook (..))
 import Prelude hiding (Reader, reader, runReader)
 
 -- | Global CLI Settings
@@ -46,18 +44,8 @@ data CISettings = CISettings
   -- ^ Whether to auto-build new branches
   , jobRetentionDays :: Natural
   -- ^ Delete jobs older than N days (0 = disable cleanup)
-  }
-  deriving stock (Show)
-
-{- | Operator-side integration hooks.
-
-Distinct from 'CISettings' (capacity / scheduling policy) and from the
-HTTP transport settings on 'WebSettings': these are choices about how
-vira talks to other systems on the operator's behalf.
--}
-newtype OperatorHookSettings = OperatorHookSettings
-  { postBuildHook :: Maybe PostBuildHook
-  -- ^ Script run after each successful pipeline (parsed from @--post-build-hook@).
+  , postBuildHook :: Maybe FilePath
+  -- ^ Path to an operator-configured shell script run after each successful pipeline (from @--post-build-hook@).
   }
   deriving stock (Show)
 
@@ -75,8 +63,6 @@ data WebSettings = WebSettings
   -- ^ Optional JSON file to import on startup
   , ciSettings :: CISettings
   -- ^ CI configuration settings
-  , hookSettings :: OperatorHookSettings
-  -- ^ Operator-defined integration hooks
   }
   deriving stock (Show)
 
@@ -86,7 +72,7 @@ data Command
   | ExportCommand
   | ImportCommand
   | InfoCommand
-  | CICommand (Maybe FilePath) CIMode (Maybe PostBuildHook)
+  | CICommand (Maybe FilePath) CIMode (Maybe FilePath)
   deriving stock (Show)
 
 -- | Complete CLI configuration
@@ -136,18 +122,18 @@ severityReader = eitherReader $ \s -> case map toLower s of
 {- | Parser for the @--post-build-hook@ flag.
 
 Path to a shell script that runs after a successful pipeline. The script
-is executed with @VIRA_REPO@, @VIRA_BRANCH@, and @VIRA_COMMIT_ID@ in the
-environment and branches internally on those values to pick a target.
-'Nothing' (the default) disables post-build hooks.
+is executed with @VIRA_BRANCH@, @VIRA_COMMIT_ID@, and (when an origin
+remote is configured) @VIRA_REPO_CLONE_URL@ in the environment, and
+branches internally on those values to pick a target. 'Nothing' (the
+default) disables post-build hooks.
 -}
-postBuildHookOption :: Parser (Maybe PostBuildHook)
+postBuildHookOption :: Parser (Maybe FilePath)
 postBuildHookOption =
   optional $
-    fmap PostBuildHook $
-      strOption $
-        long "post-build-hook"
-          <> metavar "PATH"
-          <> help "Path to a shell script to run after a successful pipeline"
+    strOption $
+      long "post-build-hook"
+        <> metavar "PATH"
+        <> help "Path to a shell script to run after a successful pipeline"
 
 -- | Parser for web settings
 webSettingsParser :: Parser WebSettings
@@ -220,8 +206,8 @@ webSettingsParser = do
             { maxConcurrentBuilds
             , autoBuildNewBranches = AutoBuildNewBranches autoBuildNewBranchesBool
             , jobRetentionDays
+            , postBuildHook
             }
-      , hookSettings = OperatorHookSettings {postBuildHook}
       }
 
 -- | Parser for CI command

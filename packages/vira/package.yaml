@@ -92,7 +92,6 @@ dependencies:
   - profunctors
   - QuickCheck
   - record-hasfield
-
   - safecopy
   - servant
   - servant-event-stream

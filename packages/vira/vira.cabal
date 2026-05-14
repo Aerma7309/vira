@@ -50,6 +50,7 @@ library
       Vira.CI.Pipeline
       Vira.CI.Pipeline.Effect
       Vira.CI.Pipeline.Implementation
+      Vira.CI.Pipeline.PostBuildHook
       Vira.CI.Pipeline.Process
       Vira.CI.Pipeline.Program
       Vira.CI.Pipeline.Signoff

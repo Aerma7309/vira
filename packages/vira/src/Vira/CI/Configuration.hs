@@ -2,12 +2,10 @@
 
 module Vira.CI.Configuration (
   applyConfig,
-  applyConfigWithRunner,
-  configInterpreter,
 ) where
 
 import Language.Haskell.Hint.Nix
-import Language.Haskell.Interpreter (InterpreterError, InterpreterT)
+import Language.Haskell.Interpreter (InterpreterError)
 import Language.Haskell.Interpreter qualified as Hint
 import Vira.CI.Context (ViraContext)
 import Vira.CI.Pipeline.Type (ViraPipeline)
@@ -22,58 +20,44 @@ applyConfig ::
   -- | Default 'ViraPipeline' configuration
   ViraPipeline ->
   m (Either InterpreterError ViraPipeline)
-applyConfig = applyConfigWithRunner runInterpreterWithNixPackageDb
+applyConfig configContent ctx pipeline = do
+  result <- liftIO $ runInterpreterWithNixPackageDb $ do
+    -- Set up the interpreter context
+    Hint.set
+      [ Hint.languageExtensions
+          Hint.:= [ Hint.OverloadedStrings
+                  , Hint.OverloadedLists
+                  , Hint.MultiWayIf
+                  , Hint.UnknownExtension "OverloadedRecordDot"
+                  , Hint.UnknownExtension "OverloadedRecordUpdate"
+                  , Hint.UnknownExtension "RebindableSyntax"
+                  ]
+      ]
 
-{- | Like 'applyConfig' but accepts an explicit interpreter runner.
+    -- Import necessary modules
+    Hint.setImports
+      [ -- Provide the user with relude functions
+        -- Thus, we don't need to import gazillion others (like Data.Text)
+        "Relude"
+      , -- For record update syntax
+        "GHC.Records.Compat"
+      , -- Vira CI types
+        "Vira.CI.Context"
+      , "Vira.CI.Pipeline.Type"
+      , -- Git types, used by CI types
+        "Effectful.Git"
+      ]
 
-Useful in tests where the Nix package DB may not include locally-built
-packages.  Pass a runner that uses the cabal in-place package DB instead:
+    -- Wrap the config content with ifThenElse definition for RebindableSyntax
+    -- RebindableSyntax requires ifThenElse to be in scope
+    let wrappedContent = "let ifThenElse :: Bool -> a -> a -> a; ifThenElse True t _ = t; ifThenElse False _ f = f in " <> configContent
 
-@
-import Language.Haskell.Interpreter.Unsafe (unsafeRunInterpreterWithArgs)
-applyConfigWithRunner (unsafeRunInterpreterWithArgs ["-package-db", localDb])
-@
--}
-applyConfigWithRunner ::
-  (MonadIO m) =>
-  -- | Interpreter runner (e.g. 'runInterpreterWithNixPackageDb')
-  (InterpreterT IO ViraPipeline -> IO (Either InterpreterError ViraPipeline)) ->
-  -- | Contents of Haskell config file
-  Text ->
-  -- | Current 'ViraContext'
-  ViraContext ->
-  -- | Default 'ViraPipeline' configuration
-  ViraPipeline ->
-  m (Either InterpreterError ViraPipeline)
-applyConfigWithRunner runner configContent ctx pipeline =
-  liftIO $ runner (configInterpreter configContent ctx pipeline)
+    -- Interpret the configuration code directly as a function
+    configFn <- Hint.interpret (toString wrappedContent) (Hint.as :: ViraContext -> ViraPipeline -> ViraPipeline)
 
-{- | The hint interpreter action that evaluates a @vira.hs@ config snippet.
+    -- Apply the configuration function
+    return $ configFn ctx pipeline
 
-Separated from the runner so callers can supply a different package DB
-(e.g. the cabal in-place DB in tests) without duplicating the setup logic.
--}
-configInterpreter :: Text -> ViraContext -> ViraPipeline -> InterpreterT IO ViraPipeline
-configInterpreter configContent ctx pipeline = do
-  Hint.set
-    [ Hint.languageExtensions
-        Hint.:= [ Hint.OverloadedStrings
-                , Hint.OverloadedLists
-                , Hint.MultiWayIf
-                , Hint.UnknownExtension "OverloadedRecordDot"
-                , Hint.UnknownExtension "OverloadedRecordUpdate"
-                , Hint.UnknownExtension "RebindableSyntax"
-                ]
-    ]
-  -- Import necessary modules
-  Hint.setImports
-    [ "Relude"
-    , "GHC.Records.Compat"
-    , "Vira.CI.Context"
-    , "Vira.CI.Pipeline.Type"
-    , "Effectful.Git"
-    ]
-  -- RebindableSyntax requires ifThenElse to be in scope
-  let wrappedContent = "let ifThenElse :: Bool -> a -> a -> a; ifThenElse True t _ = t; ifThenElse False _ f = f in " <> configContent
-  configFn <- Hint.interpret (toString wrappedContent) (Hint.as :: ViraContext -> ViraPipeline -> ViraPipeline)
-  return $ configFn ctx pipeline
+  case result of
+    Left err -> return $ Left err
+    Right modifiedPipeline -> return $ Right modifiedPipeline

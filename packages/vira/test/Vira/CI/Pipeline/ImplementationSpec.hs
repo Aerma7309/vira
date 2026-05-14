@@ -12,7 +12,7 @@ import System.IO (hClose, openTempFile)
 import System.Posix.Files (ownerExecuteMode, ownerReadMode, ownerWriteMode, setFileMode, unionFileModes)
 import Test.Hspec
 import Vira.CI.Context (CIMode (..), ViraContext (..))
-import Vira.CI.Pipeline.Implementation (HookError (..), hookEnvVars, runHook)
+import Vira.CI.Pipeline.PostBuildHook (HookError (..), hookEnvVars, runHook)
 import Prelude hiding (id)
 
 -- | Sink that throws away anything written, for tests that don't inspect subprocess output.
