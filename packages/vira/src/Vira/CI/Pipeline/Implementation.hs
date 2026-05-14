@@ -89,7 +89,7 @@ runPipeline env program =
           Build pipeline -> buildImpl pipeline
           Cache pipeline buildResults -> cacheImpl pipeline buildResults
           Signoff pipeline buildResults -> signoffImpl pipeline buildResults
-          PostBuild pipeline -> postBuildImpl pipeline
+          PostBuild -> postBuildImpl
       )
       program
 
@@ -437,9 +437,8 @@ postBuildImpl ::
   , ER.Reader PipelineEnv :> es
   , Error PipelineError :> es
   ) =>
-  ViraPipeline ->
   Eff es ()
-postBuildImpl _pipeline = do
+postBuildImpl = do
   env <- ER.ask @PipelineEnv
   case env.postBuildHook of
     Nothing -> logPipeline Info "No post-build hook configured, skipping"

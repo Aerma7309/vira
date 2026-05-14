@@ -79,11 +79,10 @@ pipelineProgram = do
   -- Step 4: Signoff
   signoff pipeline buildResults
 
-  -- Step 5: Post-build hooks (run last, after cache and signoff).
+  -- Step 5: Post-build hook (run last, after cache and signoff).
   -- Skipped in BuildOnly mode where side effects are disabled.
   env <- ER.ask @PipelineEnv
-  when (env.viraContext.ciMode /= BuildOnly) $
-    postBuild pipeline
+  when (env.viraContext.ciMode /= BuildOnly) postBuild
   logPipeline Info "Pipeline completed successfully"
 
 {- | Pipeline program with clone (for web/CI)
