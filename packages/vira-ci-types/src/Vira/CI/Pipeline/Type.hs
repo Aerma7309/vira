@@ -125,4 +125,4 @@ instance HasField "cache" ViraPipeline CacheStage where
   hasField (ViraPipeline build nix cache signoff) = (\x -> ViraPipeline build nix x signoff, cache)
 
 instance HasField "signoff" ViraPipeline SignoffStage where
-  hasField (ViraPipeline build nix cache signoff) = (ViraPipeline build nix cache, signoff)
+  hasField (ViraPipeline build nix cache signoff) = (\x -> ViraPipeline build nix cache x, signoff)
