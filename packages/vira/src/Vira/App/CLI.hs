@@ -23,6 +23,7 @@ import Options.Applicative qualified as OA
 import Paths_vira qualified
 import Vira.CI.AutoBuild.Type (AutoBuildNewBranches (..))
 import Vira.CI.Context (CIMode (..))
+import Vira.CI.Pipeline.Effect (PostBuildHook (..))
 import Prelude hiding (Reader, reader, runReader)
 
 -- | Global CLI Settings
@@ -61,8 +62,8 @@ data WebSettings = WebSettings
   -- ^ Optional JSON file to import on startup
   , ciSettings :: CISettings
   -- ^ CI configuration settings
-  , postBuildHook :: Maybe FilePath
-  -- ^ Path to a shell script to run after a successful pipeline (parsed from @--post-build-hook@).
+  , postBuildHook :: Maybe PostBuildHook
+  -- ^ Operator-configured script to run after a successful pipeline (parsed from @--post-build-hook@).
   }
   deriving stock (Show)
 
@@ -72,7 +73,7 @@ data Command
   | ExportCommand
   | ImportCommand
   | InfoCommand
-  | CICommand (Maybe FilePath) CIMode (Maybe FilePath)
+  | CICommand (Maybe FilePath) CIMode (Maybe PostBuildHook)
   deriving stock (Show)
 
 -- | Complete CLI configuration
@@ -126,13 +127,14 @@ is executed with @VIRA_REPO@, @VIRA_BRANCH@, and @VIRA_COMMIT_ID@ in the
 environment and branches internally on those values to pick a target.
 'Nothing' (the default) disables post-build hooks.
 -}
-postBuildHookOption :: Parser (Maybe FilePath)
+postBuildHookOption :: Parser (Maybe PostBuildHook)
 postBuildHookOption =
   optional $
-    strOption $
-      long "post-build-hook"
-        <> metavar "PATH"
-        <> help "Path to a shell script to run after a successful pipeline"
+    fmap PostBuildHook $
+      strOption $
+        long "post-build-hook"
+          <> metavar "PATH"
+          <> help "Path to a shell script to run after a successful pipeline"
 
 -- | Parser for web settings
 webSettingsParser :: Parser WebSettings

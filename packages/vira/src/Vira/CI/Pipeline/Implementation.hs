@@ -442,8 +442,9 @@ postBuildImpl = do
   env <- ER.ask @PipelineEnv
   case env.postBuildHook of
     Nothing -> logPipeline Info "No post-build hook configured, skipping"
-    Just scriptPath -> do
+    Just hook -> do
       let ctx = env.viraContext
+          scriptPath = postBuildHookPath hook
       logPipeline Info $ "Running post-build hook: " <> toText scriptPath
       result <-
         liftIO $

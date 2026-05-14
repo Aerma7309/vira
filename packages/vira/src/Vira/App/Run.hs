@@ -37,6 +37,7 @@ import Vira.CI.AutoBuild qualified as AutoBuild
 import Vira.CI.Cleanup.Daemon qualified as CleanupDaemon
 import Vira.CI.Context (CIMode (..), ViraContext (..))
 import Vira.CI.Pipeline qualified as Pipeline
+import Vira.CI.Pipeline.Effect (PostBuildHook)
 import Vira.CI.Pipeline.Program qualified as Program
 import Vira.CI.Worker qualified as Worker
 import Vira.CI.Worker.Type qualified as Worker
@@ -139,7 +140,7 @@ runVira = do
       putTextLn $ "Platform: " <> platform instanceInfo
       putTextLn $ "Schema version: " <> show viraDbVersion
 
-    runCI :: GlobalSettings -> Maybe FilePath -> CIMode -> Maybe FilePath -> IO ()
+    runCI :: GlobalSettings -> Maybe FilePath -> CIMode -> Maybe PostBuildHook -> IO ()
     runCI gs mDir ciMode postBuildHook = do
       dir <- maybe getCurrentDirectory makeAbsolute mDir
       -- Throw Terminated on Ctrl+C so Process.hs cleanup logic can terminate nix processes
