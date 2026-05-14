@@ -60,7 +60,7 @@ import Vira.CI.Error (ConfigurationError (..), PipelineError (..), pipelineToolE
 import Vira.CI.Pipeline.Effect
 import Vira.CI.Pipeline.Process (runProcess)
 import Vira.CI.Pipeline.Signoff qualified as Signoff
-import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), Hooks (..), HooksConfig, NixConfig (..), SignoffStage (..), ViraPipeline (..), allowedNixOptions, validateNixOptions)
+import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), NixConfig (..), SignoffStage (..), ViraPipeline (..), allowedNixOptions, validateNixOptions)
 import Vira.Environment.Tool.Tools.Attic qualified as AtticTool
 import Vira.Environment.Tool.Type.ToolData (status)
 import Vira.Environment.Tool.Type.Tools (attic)
@@ -369,17 +369,16 @@ hookEnvVars ctx =
   ]
     <> maybe [] (\name -> [("VIRA_REPO", name)]) (repoNameFromCloneUrl ctx.cloneUrl)
 
-{- | Execute a named hook command with environment variables.
+{- | Execute a shell script with environment variables.
 
 Subprocess stdout/stderr are streamed line by line to @sink@. The hook
 is killed (process group) if it runs longer than @timeoutMicros@.
-Returns @Left@ with a diagnostic when the hook is missing, exits
-non-zero, or times out.
+Returns @Left@ with a diagnostic when the script exits non-zero or
+times out.
 -}
 runHook ::
-  HooksConfig ->
-  -- | Hook name
-  Text ->
+  -- | Path to the shell script to execute
+  FilePath ->
   -- | Environment variables to set; override any same-named inherited vars
   [(Text, Text)] ->
   -- | Working directory
@@ -389,53 +388,48 @@ runHook ::
   -- | Timeout in microseconds; 'Nothing' disables the timeout
   Maybe Int ->
   IO (Either Text ())
-runHook hooksConfig hookName envVars workDir sink mTimeoutMicros =
-  case Map.lookup hookName hooksConfig of
-    Nothing -> pure $ Left $ "Hook '" <> hookName <> "' not found in operator configuration"
-    Just cmd -> doRun cmd
-  where
-    doRun cmd = do
-      -- VIRA_* values take precedence over any same-named inherited vars,
-      -- and Map.union deduplicates so execve receives a single value per key.
-      currentEnv <- getEnvironment
-      let processEnv =
-            Map.toList $
-              Map.fromList (map (bimap toString toString) envVars)
-                `Map.union` Map.fromList currentEnv
-          cp =
-            (proc "sh" ["-c", toString cmd])
-              { env = Just processEnv
-              , cwd = Just workDir
-              , std_out = CreatePipe
-              , std_err = CreatePipe
-              , create_group = True
-              }
-      withCreateProcess cp $ \_ mStdoutH mStderrH ph -> do
-        let stdoutH = fromMaybe (error "Expected stdout handle") mStdoutH
-            stderrH = fromMaybe (error "Expected stderr handle") mStderrH
-        withAsync (drainHandleWith (\x -> x) stdoutH sink) $ \stdoutAsync ->
-          withAsync (drainHandleWith (\x -> x) stderrH sink) $ \stderrAsync -> do
-            mExit <- case mTimeoutMicros of
-              Nothing -> Just <$> waitForProcess ph
-              Just t -> Timeout.timeout t (waitForProcess ph)
-            case mExit of
-              Nothing -> do
-                interruptProcessGroupOf ph `CE.catch` \(_ :: SomeException) -> pass
-                _ <- waitForProcess ph
-                wait stdoutAsync
-                wait stderrAsync
-                let secs = maybe 0 (`div` 1_000_000) mTimeoutMicros
-                pure $ Left $ "Hook command timed out after " <> show secs <> "s"
-              Just ExitSuccess -> do
-                wait stdoutAsync
-                wait stderrAsync
-                pure $ Right ()
-              Just (ExitFailure code) -> do
-                wait stdoutAsync
-                wait stderrAsync
-                pure $ Left $ "Hook command exited with code " <> show code
+runHook scriptPath envVars workDir sink mTimeoutMicros = do
+  -- VIRA_* values take precedence over any same-named inherited vars,
+  -- and Map.union deduplicates so execve receives a single value per key.
+  currentEnv <- getEnvironment
+  let processEnv =
+        Map.toList $
+          Map.fromList (map (bimap toString toString) envVars)
+            `Map.union` Map.fromList currentEnv
+      cp =
+        (proc scriptPath [])
+          { env = Just processEnv
+          , cwd = Just workDir
+          , std_out = CreatePipe
+          , std_err = CreatePipe
+          , create_group = True
+          }
+  withCreateProcess cp $ \_ mStdoutH mStderrH ph -> do
+    let stdoutH = fromMaybe (error "Expected stdout handle") mStdoutH
+        stderrH = fromMaybe (error "Expected stderr handle") mStderrH
+    withAsync (drainHandleWith (\x -> x) stdoutH sink) $ \stdoutAsync ->
+      withAsync (drainHandleWith (\x -> x) stderrH sink) $ \stderrAsync -> do
+        mExit <- case mTimeoutMicros of
+          Nothing -> Just <$> waitForProcess ph
+          Just t -> Timeout.timeout t (waitForProcess ph)
+        case mExit of
+          Nothing -> do
+            interruptProcessGroupOf ph `CE.catch` \(_ :: SomeException) -> pass
+            _ <- waitForProcess ph
+            wait stdoutAsync
+            wait stderrAsync
+            let secs = maybe 0 (`div` 1_000_000) mTimeoutMicros
+            pure $ Left $ "Hook script timed out after " <> show secs <> "s"
+          Just ExitSuccess -> do
+            wait stdoutAsync
+            wait stderrAsync
+            pure $ Right ()
+          Just (ExitFailure code) -> do
+            wait stdoutAsync
+            wait stderrAsync
+            pure $ Left $ "Hook script exited with code " <> show code
 
--- | Implementation: Execute post-build hooks
+-- | Implementation: Execute post-build hook
 postBuildImpl ::
   ( Log (RichMessage IO) :> es
   , IOE :> es
@@ -445,29 +439,29 @@ postBuildImpl ::
   ) =>
   ViraPipeline ->
   Eff es ()
-postBuildImpl pipeline = case pipeline.hooks.onSuccess of
-  Nothing -> logPipeline Info "No post-build hook configured, skipping"
-  Just hookName -> do
-    env <- ER.ask @PipelineEnv
-    let ctx = env.viraContext
-    logPipeline Info $ "Running post-build hook: " <> hookName
-    result <-
-      liftIO $
-        runHook
-          env.availableHooks
-          hookName
-          (hookEnvVars ctx)
-          ctx.repoDir
-          env.logSink
-          (Just hookTimeoutMicros)
-    case result of
-      Left err ->
-        throwError $
-          pipelineToolError
-            ("Post-build hook '" <> hookName <> "' failed: " <> err)
-            (Nothing :: Maybe Text)
-      Right () ->
-        logPipeline Info $ "Post-build hook '" <> hookName <> "' succeeded"
+postBuildImpl _pipeline = do
+  env <- ER.ask @PipelineEnv
+  case env.postBuildHook of
+    Nothing -> logPipeline Info "No post-build hook configured, skipping"
+    Just scriptPath -> do
+      let ctx = env.viraContext
+      logPipeline Info $ "Running post-build hook: " <> toText scriptPath
+      result <-
+        liftIO $
+          runHook
+            scriptPath
+            (hookEnvVars ctx)
+            ctx.repoDir
+            env.logSink
+            (Just hookTimeoutMicros)
+      case result of
+        Left err ->
+          throwError $
+            pipelineToolError
+              ("Post-build hook failed: " <> err)
+              (Nothing :: Maybe Text)
+        Right () ->
+          logPipeline Info "Post-build hook succeeded"
 
 -- | Maximum hook runtime before vira kills the subprocess (5 minutes).
 hookTimeoutMicros :: Int
@@ -481,7 +475,6 @@ defaultPipeline =
     , nix = NixConfig {options = []}
     , cache = CacheStage Nothing
     , signoff = SignoffStage False
-    , hooks = Hooks {onSuccess = Nothing}
     }
   where
     defaultFlake = Flake "." mempty

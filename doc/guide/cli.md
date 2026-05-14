@@ -20,9 +20,9 @@ If no directory is specified, runs in the current directory. The directory must 
 
 - `--local` / `-l` - Build only for the current system, run all stages
 - `--only-build` / `-b` - Build only for the current system, skip cache and signoff stages
-- `--hooks JSON` - JSON string mapping hook names to shell commands, e.g. `'{"notify":"curl ..."}'`
+- `--post-build-hook PATH` - Path to a shell script to run after a successful pipeline
 
-These flags are mutually exclusive (except `--hooks` which can be combined with any mode).
+The mode flags (`--local`, `--only-build`) are mutually exclusive. `--post-build-hook` can be combined with any mode (but is ignored under `--only-build`).
 
 ### Default Behavior {#default}
 
@@ -33,7 +33,7 @@ By default, `vira ci` respects the [[config|`vira.hs`]] configuration for all st
 - Builds for all configured `build.systems`
 - Enables creating per-system signoffs (e.g., `vira/x86_64-linux`) during local development
 - Pushes to cache if configured
-- Runs post-build hooks when `vira.hs` configures `hooks.onSuccess`. The named hook command must be supplied at the CLI via `--hooks` — running `vira ci` without `--hooks` while `hooks.onSuccess` is set will fail with "Hook '...' not found in operator configuration"
+- Runs the script passed via `--post-build-hook` (if any) after a successful pipeline, with `VIRA_REPO`, `VIRA_BRANCH`, and `VIRA_COMMIT_ID` exported in the environment
 
 ### Local Mode {#local}
 
@@ -69,7 +69,7 @@ When `--only-build` is used:
 - Ignores `build.systems` from config (uses current system only)
 - Skips cache push even if configured
 - Skips signoff creation even if configured
-- Skips hooks even if configured (or if `--hooks` is provided)
+- Skips the post-build hook even if `--post-build-hook` is provided
 
 ### Examples
 
@@ -87,7 +87,7 @@ vira ci -l
 vira ci -b
 
 # Run CI with a post-build hook
-vira ci --hooks '{"notify-jenkins":"curl -X POST https://jenkins.example.com/build"}'
+vira ci --post-build-hook /etc/vira/post-build.sh
 ```
 
 ## Export/Import State {#import-export}
@@ -132,4 +132,4 @@ When running `vira web`, these additional options are available:
 - `--max-concurrent-builds COUNT` - Maximum concurrent CI builds (defaults to 2)
 - `--auto-build-new-branches` - Auto-build new branches (default: only auto-build branches built at least once)
 - `--job-retention-days DAYS` - Delete jobs older than N days (default: 14, set to 0 to disable cleanup). See [[cleanup]] for details.
-- `--hooks JSON` - JSON object mapping hook names to shell commands, e.g. `'{"notify":"curl ..."}'`. In NixOS / home-manager deployments this is supplied automatically from `services.vira.hooks`.
+- `--post-build-hook PATH` - Path to a shell script run after each successful pipeline. The script receives `VIRA_REPO`, `VIRA_BRANCH`, and `VIRA_COMMIT_ID` in the environment. In NixOS / home-manager deployments this is wired up automatically from `services.vira.postBuildHook` (the operator writes the script body inline; the module wraps it with `pkgs.writeShellScript`).

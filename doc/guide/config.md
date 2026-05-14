@@ -132,61 +132,8 @@ Enables commit status reporting to GitHub or Bitbucket. When enabled, Vira posts
 - For GitHub, uses GitHub API with token from `gh` CLI.
 - For Bitbucket, uses Bitbucket API with token from `bb` CLI.
 
-#### Hooks Stage
-
-After a successful pipeline run (Build → Cache → Signoff), Vira can execute named operator-defined hooks. Hooks are shell commands registered by name in the operator's Nix configuration.
-
-```haskell
--- vira.hs
-pipeline
-  { hooks.onSuccess = Just "notify-jenkins"
-  }
-```
-
-> [!WARNING]
-> The hook name (`"notify-jenkins"` in the example above) must be registered by the CI machine operator — see [[config#Operator setup|Operator setup]] below.
-
-**Environment variables** are provided to the hook at execution time:
-
-| Variable         | Description                              |
-| ---------------- | ---------------------------------------- |
-| `VIRA_REPO`      | Repository name (derived from clone URL) |
-| `VIRA_BRANCH`    | Current branch name                      |
-| `VIRA_COMMIT_ID` | Commit SHA being built                   |
-
-The operator controls the hook's behavior entirely — they define the shell command that runs and have full access to environment variables on the CI machine.
-
-#### Operator setup
-
-Hooks are **disabled by default** (empty configuration). The operator must register hook names and their corresponding shell commands via the Nix module:
-
-```nix
-services.vira.hooks = {
-  notify-jenkins = ''
-    curl -fsS --retry 3 -X POST \
-      -u "$JENKINS_USER:$JENKINS_TOKEN" \
-      "https://jenkins.office/job/$VIRA_REPO-integration/buildWithParameters?BRANCH=$VIRA_BRANCH"
-  '';
-
-  notify-slack = ''
-    curl -fsS -X POST \
-      -H "Content-Type: application/json" \
-      -d "{\"text\": \"✅ $VIRA_REPO@$VIRA_BRANCH built successfully\"}" \
-      "$SLACK_WEBHOOK_URL"
-  '';
-};
-```
-
-The operator defines the shell command and controls all aspects of hook execution.
-
 > [!NOTE]
-> Hooks are executed with the repository root as the working directory. Non-zero exit codes fail the pipeline.
-
-> [!NOTE]
-> Hooks are disabled in `--only-build` mode (local quick builds without side effects).
-
-> [!NOTE]
-> When running `vira ci`, hooks require the `--hooks` flag to provide the hook commands (since there is no operator Nix configuration in CLI mode). For example: `vira ci --hooks '{"notify-jenkins":"curl ..."}'`
+> Post-build hooks (e.g. Jenkins / Slack notifications) are configured by the CI operator, not in `vira.hs`. See `services.vira.postBuildHook` in the NixOS / home-manager module, or pass `--post-build-hook PATH` to `vira ci`. The script receives `VIRA_REPO`, `VIRA_BRANCH`, and `VIRA_COMMIT_ID` in the environment and branches internally.
 
 ## Conditional Configuration {#cond}
 

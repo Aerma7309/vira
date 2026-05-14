@@ -92,27 +92,36 @@ in
       };
     };
 
-    hooks = mkOption {
-      type = types.attrsOf types.str;
-      default = { };
+    postBuildHook = mkOption {
+      type = types.nullOr types.lines;
+      default = null;
       description = ''
-        Map of hook names to shell commands for post-build hooks.
+        Shell script body to run after every successful CI pipeline.
 
-        Hooks are registered by name here and referenced in <filename>vira.hs</filename>
-        via <literal>hooks.onSuccess = Just "hook-name"</literal>. When triggered,
-        vira executes the shell command with context in environment variables
-        (<literal>VIRA_REPO</literal>, <literal>VIRA_BRANCH</literal>, <literal>VIRA_COMMIT_ID</literal>).
+        When non-null, vira executes this script with
+        <literal>VIRA_REPO</literal>, <literal>VIRA_BRANCH</literal>, and
+        <literal>VIRA_COMMIT_ID</literal> exported in the environment. The
+        script is the operator's integration point — branch on those values
+        to dispatch to Jenkins, Slack, or anything else.
 
         Example:
         <programlisting language="nix">
-        services.vira.hooks = {
-          notify-jenkins = '' curl - fsS - -retry 3 - X POST - u "$JENKINS_USER:$JENKINS_TOKEN" "https://jenkins.office/job/$VIRA_REPO-integration/buildWithParameters?BRANCH=$VIRA_BRANCH" '';
-        };
+        services.vira.postBuildHook = '''
+          case "$VIRA_REPO" in
+            my-service)
+              curl -fsS --retry 3 -X POST \
+                -u "$JENKINS_USER:$JENKINS_TOKEN" \
+                "https://jenkins.office/job/$VIRA_REPO-integration/buildWithParameters?BRANCH=$VIRA_BRANCH"
+              ;;
+          esac
+        ''';
         </programlisting>
       '';
-      example = literalExpression ''{
-        notify-slack = "echo 'Build succeeded: $VIRA_REPO' | slack-notify";
-      }'';
+      example = literalExpression ''
+        '''
+          echo "Build succeeded: $VIRA_REPO@$VIRA_BRANCH" | slack-notify
+        '''
+      '';
     };
 
     systemd = mkOption {
@@ -179,7 +188,10 @@ in
                 ++ optionals (cfg.maxConcurrentBuilds != null) [ "--max-concurrent-builds" (toString cfg.maxConcurrentBuilds) ]
                 ++ optionals cfg.autoBuildNewBranches [ "--auto-build-new-branches" ]
                 ++ [ "--job-retention-days" (toString cfg.jobRetentionDays) ]
-                ++ optionals (cfg.hooks != { }) [ "--hooks" (lib.escapeShellArg (builtins.toJSON cfg.hooks)) ];
+                ++ optionals (cfg.postBuildHook != null) [
+                  "--post-build-hook"
+                  "${pkgs.writeShellScript "vira-post-build-hook" cfg.postBuildHook}"
+                ];
               in
               "${cfg.package}/bin/vira ${concatStringsSep " " globalArgs} web ${concatStringsSep " " webArgs}";
           };

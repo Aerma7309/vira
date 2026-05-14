@@ -14,9 +14,7 @@ module Vira.App.CLI (
 ) where
 
 import Colog.Core (Severity (..))
-import Data.Aeson qualified as Aeson
 import Data.Char (toLower)
-import Data.Map.Strict qualified as Map
 import Data.Version (showVersion)
 import Network.Wai.Handler.Warp (Port)
 import Network.Wai.Handler.WarpTLS.Simple (TLSConfig, tlsConfigParser)
@@ -25,7 +23,6 @@ import Options.Applicative qualified as OA
 import Paths_vira qualified
 import Vira.CI.AutoBuild.Type (AutoBuildNewBranches (..))
 import Vira.CI.Context (CIMode (..))
-import Vira.CI.Pipeline.Type (HooksConfig)
 import Prelude hiding (Reader, reader, runReader)
 
 -- | Global CLI Settings
@@ -64,8 +61,8 @@ data WebSettings = WebSettings
   -- ^ Optional JSON file to import on startup
   , ciSettings :: CISettings
   -- ^ CI configuration settings
-  , hooks :: HooksConfig
-  -- ^ Operator-defined hook commands (parsed from @--hooks@). Empty when not provided.
+  , postBuildHook :: Maybe FilePath
+  -- ^ Path to a shell script to run after a successful pipeline (parsed from @--post-build-hook@).
   }
   deriving stock (Show)
 
@@ -75,7 +72,7 @@ data Command
   | ExportCommand
   | ImportCommand
   | InfoCommand
-  | CICommand (Maybe FilePath) CIMode HooksConfig
+  | CICommand (Maybe FilePath) CIMode (Maybe FilePath)
   deriving stock (Show)
 
 -- | Complete CLI configuration
@@ -122,25 +119,20 @@ severityReader = eitherReader $ \s -> case map toLower s of
   "error" -> Right Error
   _ -> Left "Invalid log level. Choose from: Debug, Info, Warning, Error"
 
-{- | Parser for the @--hooks@ flag.
+{- | Parser for the @--post-build-hook@ flag.
 
-The value is a JSON object mapping hook names to shell commands. The JSON
-is parsed at parse time so downstream code never sees the raw string.
-Defaults to an empty map when the flag is absent.
+Path to a shell script that runs after a successful pipeline. The script
+is executed with @VIRA_REPO@, @VIRA_BRANCH@, and @VIRA_COMMIT_ID@ in the
+environment and branches internally on those values to pick a target.
+'Nothing' (the default) disables post-build hooks.
 -}
-hooksOption :: Parser HooksConfig
-hooksOption =
-  option hooksReader $
-    long "hooks"
-      <> metavar "JSON"
-      <> help "JSON object mapping hook names to shell commands, e.g. '{\"notify\":\"curl ...\"}'"
-      <> value Map.empty
-  where
-    hooksReader :: ReadM HooksConfig
-    hooksReader = eitherReader $ \s ->
-      case Aeson.eitherDecodeStrict (encodeUtf8 (toText s)) of
-        Left err -> Left $ "Invalid --hooks JSON: " <> err
-        Right h -> Right h
+postBuildHookOption :: Parser (Maybe FilePath)
+postBuildHookOption =
+  optional $
+    strOption $
+      long "post-build-hook"
+        <> metavar "PATH"
+        <> help "Path to a shell script to run after a successful pipeline"
 
 -- | Parser for web settings
 webSettingsParser :: Parser WebSettings
@@ -200,7 +192,7 @@ webSettingsParser = do
           <> value 14
           <> showDefault
       )
-  hooks <- hooksOption
+  postBuildHook <- postBuildHookOption
   pure
     WebSettings
       { port
@@ -214,7 +206,7 @@ webSettingsParser = do
             , autoBuildNewBranches = AutoBuildNewBranches autoBuildNewBranchesBool
             , jobRetentionDays
             }
-      , hooks
+      , postBuildHook
       }
 
 -- | Parser for CI command
@@ -231,7 +223,7 @@ ciCommandParser =
             <|> flag' LocalBuild (long "local" <> short 'l' <> help "Build only for the current system")
             <|> pure FullBuild
         )
-    <*> hooksOption
+    <*> postBuildHookOption
 
 -- | Parser for commands
 commandParser :: Parser Command

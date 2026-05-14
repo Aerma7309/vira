@@ -17,12 +17,12 @@ import System.Nix.System (System (..))
 import Vira.CI.Context (CIMode (..), ViraContext (..))
 import Vira.CI.Error (PipelineError (..))
 import Vira.CI.Pipeline.Effect
-import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), Hooks (..), NixConfig (..), SignoffStage (..), ViraPipeline (..))
+import Vira.CI.Pipeline.Type (BuildStage (..), CacheStage (..), Flake (..), NixConfig (..), SignoffStage (..), ViraPipeline (..))
 import Vira.State.Type (Branch, Repo)
 
 -- | Pretty-print pipeline configuration in a concise format
 prettyPipeline :: ViraPipeline -> Text
-prettyPipeline ViraPipeline {build = buildStage, nix = nixCfg, cache = cacheStage, signoff = signoffStage, hooks = hooksStage} =
+prettyPipeline ViraPipeline {build = buildStage, nix = nixCfg, cache = cacheStage, signoff = signoffStage} =
   renderStrict $
     layoutPretty defaultLayoutOptions $
       vsep
@@ -36,7 +36,6 @@ prettyPipeline ViraPipeline {build = buildStage, nix = nixCfg, cache = cacheStag
               ]
         , "Cache:" <+> maybe "disabled" (\url -> "enabled" <+> parens (pretty url)) cacheStage.url
         , "Signoff:" <+> if signoffStage.enable then "enabled" else "disabled"
-        , "Hooks:" <+> prettyHooks hooksStage
         ]
   where
     prettyFlake :: Flake -> Doc ann
@@ -52,10 +51,6 @@ prettyPipeline ViraPipeline {build = buildStage, nix = nixCfg, cache = cacheStag
     prettyNixOptions [] = mempty
     prettyNixOptions opts =
       "Nix options:" <+> hsep (punctuate comma (map (\(k, v) -> pretty k <> "=" <> pretty v) opts))
-
-    prettyHooks :: Hooks -> Doc ann
-    prettyHooks (Hooks Nothing) = "disabled (no hook configured)"
-    prettyHooks (Hooks (Just name)) = "enabled" <+> parens ("onSuccess:" <+> pretty name)
 
 -- | Pipeline program for CLI (uses existing local directory)
 pipelineProgram ::

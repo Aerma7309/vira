@@ -1,26 +1,33 @@
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Vira.CI.Pipeline.ImplementationSpec (spec) where
 
 import Control.Exception (finally)
 import Data.List (lookup)
-import Data.Map qualified as Map (empty)
 import Data.Text qualified as T
 import Effectful.Git (BranchName (..), CommitID (..))
 import LogSink (Sink (..))
 import System.Directory (removeFile)
 import System.Environment (setEnv, unsetEnv)
 import System.IO (hClose, openTempFile)
+import System.Posix.Files (ownerExecuteMode, ownerReadMode, ownerWriteMode, setFileMode, unionFileModes)
 import Test.Hspec
 import Vira.CI.Context (CIMode (..), ViraContext (..), repoNameFromCloneUrl)
-import Vira.CI.Pipeline.Implementation (defaultPipeline, hookEnvVars, runHook)
-import Vira.CI.Pipeline.Type (Hooks (..), HooksConfig, ViraPipeline (..))
+import Vira.CI.Pipeline.Implementation (hookEnvVars, runHook)
 import Prelude hiding (id)
 
 -- | Sink that throws away anything written, for tests that don't inspect subprocess output.
 discardSink :: Sink Text
 discardSink = Sink {sinkWrite = const pass, sinkFlush = pass, sinkClose = pass}
+
+-- | Write @body@ to a fresh temp file, mark it user-executable, and return its path.
+writeTempScript :: Text -> IO FilePath
+writeTempScript body = do
+  (path, h) <- openTempFile "/tmp" "vira-hook-script.sh"
+  hClose h
+  writeFileBS path (encodeUtf8 body)
+  setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode `unionFileModes` ownerExecuteMode)
+  pure path
 
 -- Test data
 testContext :: ViraContext
@@ -69,37 +76,31 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
       repoNameFromCloneUrl (Just "https://example.com/.git") `shouldBe` Nothing
 
   describe "runHook" $ do
-    it "returns Left when hook name not found in config" $ do
-      let emptyConfig = Map.empty :: HooksConfig
-      result <- runHook emptyConfig "nonexistent" [] "/tmp" discardSink Nothing
-      result `shouldBe` Left "Hook 'nonexistent' not found in operator configuration"
-
-    it "returns Right () for successful hook command" $ do
-      let config = one ("success-hook", "true") :: HooksConfig
-      result <- runHook config "success-hook" [] "/tmp" discardSink Nothing
+    it "returns Right () for a successful script" $ do
+      script <- writeTempScript "#!/bin/sh\nexit 0\n"
+      result <- runHook script [] "/tmp" discardSink Nothing `finally` removeFile script
       result `shouldBe` Right ()
 
-    it "returns Left with exit code for failing hook command" $ do
-      let config = one ("fail-hook", "false") :: HooksConfig
-      result <- runHook config "fail-hook" [] "/tmp" discardSink Nothing
-      result `shouldBe` Left "Hook command exited with code 1"
+    it "returns Left with the exit code for a failing script" $ do
+      script <- writeTempScript "#!/bin/sh\nexit 1\n"
+      result <- runHook script [] "/tmp" discardSink Nothing `finally` removeFile script
+      result `shouldBe` Left "Hook script exited with code 1"
 
-    it "passes environment variables to hook command" $ do
-      -- Write VIRA_BRANCH value to a temp file via the hook, then read it back
-      (tmpPath, tmpHandle) <- openTempFile "/tmp" "vira-hook-test"
-      hClose tmpHandle
-      let envVar = ("VIRA_BRANCH", "staging")
-          hookCmd = "echo $VIRA_BRANCH > " <> toText tmpPath
-          config = one ("env-hook", hookCmd) :: HooksConfig
-      result <- runHook config "env-hook" [envVar] "/tmp" discardSink Nothing
-      result `shouldBe` Right ()
-      content <- readFileBS tmpPath
-      decodeUtf8 content `shouldContain` "staging"
-      removeFile tmpPath
+    it "passes environment variables to the script" $ do
+      (outPath, outHandle) <- openTempFile "/tmp" "vira-hook-out"
+      hClose outHandle
+      script <- writeTempScript $ "#!/bin/sh\necho \"$VIRA_BRANCH\" > " <> toText outPath <> "\n"
+      ( do
+          result <- runHook script [("VIRA_BRANCH", "staging")] "/tmp" discardSink Nothing
+          result `shouldBe` Right ()
+          content <- readFileBS outPath
+          decodeUtf8 content `shouldContain` "staging"
+        )
+        `finally` (removeFile script >> removeFile outPath)
 
-    it "times out when hook command runs longer than the limit" $ do
-      let config = one ("sleep-hook", "sleep 5") :: HooksConfig
-      result <- runHook config "sleep-hook" [] "/tmp" discardSink (Just 200_000) -- 0.2s
+    it "times out when the script runs longer than the limit" $ do
+      script <- writeTempScript "#!/bin/sh\nsleep 5\n"
+      result <- runHook script [] "/tmp" discardSink (Just 200_000) `finally` removeFile script
       case result of
         Left msg -> T.isInfixOf "timed out" msg `shouldBe` True
         Right () -> expectationFailure "Expected timeout, hook returned Right ()"
@@ -107,18 +108,13 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
     it "hook envVars override the inherited environment" $ do
       let varName = "VIRA_TEST_PARENT_OVERRIDE_XYZ"
       setEnv varName "from-parent"
-      (tmpPath, tmpHandle) <- openTempFile "/tmp" "vira-hook-test"
-      hClose tmpHandle
-      let hookCmd = "echo $" <> toText varName <> " > " <> toText tmpPath
-          config = one ("override-hook", hookCmd) :: HooksConfig
+      (outPath, outHandle) <- openTempFile "/tmp" "vira-hook-out"
+      hClose outHandle
+      script <- writeTempScript $ "#!/bin/sh\necho \"$" <> toText varName <> "\" > " <> toText outPath <> "\n"
       ( do
-          result <- runHook config "override-hook" [(toText varName, "from-hook")] "/tmp" discardSink Nothing
+          result <- runHook script [(toText varName, "from-hook")] "/tmp" discardSink Nothing
           result `shouldBe` Right ()
-          content <- readFileBS tmpPath
+          content <- readFileBS outPath
           decodeUtf8 content `shouldContain` "from-hook"
         )
-        `finally` (removeFile tmpPath >> unsetEnv varName)
-
-  describe "defaultPipeline" $ do
-    it "has no onSuccess hook by default" $ do
-      defaultPipeline.hooks.onSuccess `shouldBe` Nothing
+        `finally` (removeFile script >> removeFile outPath >> unsetEnv varName)
