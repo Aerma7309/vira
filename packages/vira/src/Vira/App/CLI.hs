@@ -72,7 +72,13 @@ data Command
   | ExportCommand
   | ImportCommand
   | InfoCommand
-  | CICommand (Maybe FilePath) CIMode (Maybe FilePath)
+  | CICommand
+      -- | Directory to run CI in. 'Nothing' defaults to the current directory.
+      (Maybe FilePath)
+      -- | Pipeline mode: 'FullBuild', 'LocalBuild', or 'BuildOnly'.
+      CIMode
+      -- | Path to an operator-configured post-build hook script (from @--post-build-hook@); 'Nothing' disables.
+      (Maybe FilePath)
   deriving stock (Show)
 
 -- | Complete CLI configuration
