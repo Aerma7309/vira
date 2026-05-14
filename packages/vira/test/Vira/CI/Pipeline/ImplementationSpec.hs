@@ -4,7 +4,6 @@ module Vira.CI.Pipeline.ImplementationSpec (spec) where
 
 import Control.Exception (finally)
 import Data.List (lookup)
-import Data.Text qualified as T
 import Effectful.Git (BranchName (..), CommitID (..))
 import LogSink (Sink (..))
 import System.Directory (removeFile)
@@ -13,7 +12,7 @@ import System.IO (hClose, openTempFile)
 import System.Posix.Files (ownerExecuteMode, ownerReadMode, ownerWriteMode, setFileMode, unionFileModes)
 import Test.Hspec
 import Vira.CI.Context (CIMode (..), ViraContext (..), repoNameFromCloneUrl)
-import Vira.CI.Pipeline.Implementation (hookEnvVars, runHook)
+import Vira.CI.Pipeline.Implementation (HookError (..), hookEnvVars, runHook)
 import Prelude hiding (id)
 
 -- | Sink that throws away anything written, for tests that don't inspect subprocess output.
@@ -84,7 +83,7 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
     it "returns Left with the exit code for a failing script" $ do
       script <- writeTempScript "#!/bin/sh\nexit 1\n"
       result <- runHook script [] "/tmp" discardSink Nothing `finally` removeFile script
-      result `shouldBe` Left "Hook script exited with code 1"
+      result `shouldBe` Left (HookExited 1)
 
     it "passes environment variables to the script" $ do
       (outPath, outHandle) <- openTempFile "/tmp" "vira-hook-out"
@@ -102,7 +101,8 @@ spec = describe "Vira.CI.Pipeline.Implementation" $ do
       script <- writeTempScript "#!/bin/sh\nsleep 5\n"
       result <- runHook script [] "/tmp" discardSink (Just 200_000) `finally` removeFile script
       case result of
-        Left msg -> T.isInfixOf "timed out" msg `shouldBe` True
+        Left (HookTimedOut _) -> pass
+        Left other -> expectationFailure $ "Expected HookTimedOut, got " <> show other
         Right () -> expectationFailure "Expected timeout, hook returned Right ()"
 
     it "hook envVars override the inherited environment" $ do

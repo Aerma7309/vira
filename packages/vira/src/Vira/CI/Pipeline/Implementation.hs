@@ -1,17 +1,14 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
--- @id@ from "Prelude" is hidden by the @Commit (id)@ import,
--- so passing the identity function inline requires a lambda.
-{-# HLINT ignore "Use id" #-}
 
 module Vira.CI.Pipeline.Implementation (
   runPipeline,
 
   -- * Used in tests
   defaultPipeline,
+  HookError (..),
+  displayHookError,
   hookEnvVars,
   runHook,
 ) where
@@ -369,12 +366,29 @@ hookEnvVars ctx =
   ]
     <> maybe [] (\name -> [("VIRA_REPO", name)]) (repoNameFromCloneUrl ctx.cloneUrl)
 
+-- | Failure modes for 'runHook'.
+data HookError
+  = -- | Hook process exited non-zero with the given status code.
+    HookExited Int
+  | -- | Hook process was killed after running longer than the timeout (seconds).
+    HookTimedOut Int
+  | -- | @CreatePipe@ on stdout/stderr unexpectedly produced no handle.
+    HookMissingHandle
+  deriving stock (Show, Eq)
+
+-- | Render a 'HookError' for log output.
+displayHookError :: HookError -> Text
+displayHookError = \case
+  HookExited code -> "Hook script exited with code " <> show code
+  HookTimedOut secs -> "Hook script timed out after " <> show secs <> "s"
+  HookMissingHandle -> "Hook script produced no stdout/stderr handle"
+
 {- | Execute a shell script with environment variables.
 
 Subprocess stdout/stderr are streamed line by line to @sink@. The hook
 is killed (process group) if it runs longer than @timeoutMicros@.
-Returns @Left@ with a diagnostic when the script exits non-zero or
-times out.
+Returns 'HookError' when the script exits non-zero, times out, or the
+runtime fails to attach the expected pipe handles.
 -}
 runHook ::
   -- | Path to the shell script to execute
@@ -387,7 +401,7 @@ runHook ::
   Sink Text ->
   -- | Timeout in microseconds; 'Nothing' disables the timeout
   Maybe Int ->
-  IO (Either Text ())
+  IO (Either HookError ())
 runHook scriptPath envVars workDir sink mTimeoutMicros = do
   -- VIRA_* values take precedence over any same-named inherited vars,
   -- and Map.union deduplicates so execve receives a single value per key.
@@ -404,30 +418,25 @@ runHook scriptPath envVars workDir sink mTimeoutMicros = do
           , std_err = CreatePipe
           , create_group = True
           }
-  withCreateProcess cp $ \_ mStdoutH mStderrH ph -> do
-    let stdoutH = fromMaybe (error "Expected stdout handle") mStdoutH
-        stderrH = fromMaybe (error "Expected stderr handle") mStderrH
-    withAsync (drainHandleWith (\x -> x) stdoutH sink) $ \stdoutAsync ->
-      withAsync (drainHandleWith (\x -> x) stderrH sink) $ \stderrAsync -> do
-        mExit <- case mTimeoutMicros of
-          Nothing -> Just <$> waitForProcess ph
-          Just t -> Timeout.timeout t (waitForProcess ph)
-        case mExit of
-          Nothing -> do
-            interruptProcessGroupOf ph `CE.catch` \(_ :: SomeException) -> pass
-            _ <- waitForProcess ph
+  withCreateProcess cp $ \_ mStdoutH mStderrH ph ->
+    case (mStdoutH, mStderrH) of
+      (Just stdoutH, Just stderrH) ->
+        withAsync (drainHandleWith identity stdoutH sink) $ \stdoutAsync ->
+          withAsync (drainHandleWith identity stderrH sink) $ \stderrAsync -> do
+            mExit <- case mTimeoutMicros of
+              Nothing -> Just <$> waitForProcess ph
+              Just t -> Timeout.timeout t (waitForProcess ph)
             wait stdoutAsync
             wait stderrAsync
-            let secs = maybe 0 (`div` 1_000_000) mTimeoutMicros
-            pure $ Left $ "Hook script timed out after " <> show secs <> "s"
-          Just ExitSuccess -> do
-            wait stdoutAsync
-            wait stderrAsync
-            pure $ Right ()
-          Just (ExitFailure code) -> do
-            wait stdoutAsync
-            wait stderrAsync
-            pure $ Left $ "Hook script exited with code " <> show code
+            case mExit of
+              Nothing -> do
+                interruptProcessGroupOf ph `CE.catch` \(_ :: SomeException) -> pass
+                _ <- waitForProcess ph
+                let secs = maybe 0 (`div` 1_000_000) mTimeoutMicros
+                pure $ Left $ HookTimedOut secs
+              Just ExitSuccess -> pure $ Right ()
+              Just (ExitFailure code) -> pure $ Left $ HookExited code
+      _ -> pure $ Left HookMissingHandle
 
 -- | Implementation: Execute post-build hook
 postBuildImpl ::
@@ -458,7 +467,7 @@ postBuildImpl = do
         Left err ->
           throwError $
             pipelineToolError
-              ("Post-build hook failed: " <> err)
+              ("Post-build hook failed: " <> displayHookError err)
               (Nothing :: Maybe Text)
         Right () ->
           logPipeline Info "Post-build hook succeeded"
